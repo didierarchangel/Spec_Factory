@@ -1,1 +1,1 @@
-# Spec_Factory
+# Speckit.Factory
