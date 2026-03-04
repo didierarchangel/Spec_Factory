@@ -1,0 +1,13 @@
+[project]
+name = "speckit-factory"
+version = "0.1.0"
+description = "Constitutional DevOps AI Framework"
+authors = [{name = "Didier KAZITALA"}]
+dependencies = [
+    "click>=8.1.0",
+    "langchain>=0.1.0",
+    "pydantic>=2.0.0",
+]
+
+[project.scripts]
+speckit = "spec:cli"
