@@ -159,7 +159,12 @@ def get_llm(provider: str = None, model_name: str = None):
             click.echo("💡 Assurez-vous d'avoir un fichier .env contenant 'GOOGLE_API_KEY=votre_cle'.")
             
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = model_name or ("gemini-1.5-pro" if provider == "google" else "gemini-1.5-flash")
+        # Utilisation de noms plus robustes/récents pour éviter les 404
+        if not model_name:
+            model = "gemini-1.5-pro-latest" if provider == "google" else "gemini-1.5-flash-latest"
+        else:
+            model = model_name
+            
         return ChatGoogleGenerativeAI(model=model)
     elif provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
