@@ -135,7 +135,7 @@ Après avoir utilisé Speckit.Factory :
 ## 🏆 Créateur
 
 **Didier KAZITALA**
-**RDC 2026**
+***RDC 2026***
 
 Système créé et maintenu avec ❤️ pour une IA rigoureuse, contextuelle et régie par des principes inviolables.
 
