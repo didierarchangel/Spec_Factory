@@ -159,6 +159,13 @@ Pas besoin de cloner le repo, exécutez simplement :
 uvx --from git+https://github.com/didierarchangel/Speckit.Factory.git speckit init --here
 ```
 
+#### ⚡ Raccourci Pro (PowerShell)
+Pour ne plus taper toute l'URL, ajoutez cet alias à votre session (ou votre profil `$PROFILE`) :
+```powershell
+function speckit { uvx --from git+https://github.com/didierarchangel/Speckit.Factory.git speckit @args }
+```
+Désormais, utilisez simplement : `speckit specify "votre demande"`
+
 ### Méthode 2 : Installation via Git (Pour les utilisateurs)
 ```bash
 pip install git+https://github.com/didierarchangel/Speckit.Factory.git

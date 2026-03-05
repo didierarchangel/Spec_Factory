@@ -58,7 +58,8 @@ def init(path, here):
         "1": ("Gemini-Cli", "google"),
         "2": ("Claude", "anthropic"),
         "3": ("GitHub Copilot", "copilot"),
-        "4": ("Codex-Cli", "openai")
+        "4": ("Codex-Cli", "openai"),
+        "5": ("Antigravity (IDE)", "antigravity")
     }
     
     selected_providers = []
@@ -157,6 +158,12 @@ def get_llm(provider: str = None, model_name: str = None):
         click.echo("💡 GitHub Copilot utilisé via l'API OpenAI (Codex compatible).")
         model = model_name or "gpt-4-turbo"
         return ChatOpenAI(model=model)
+    elif provider == "antigravity":
+        # Provider spécifique à l'IDE Antigravity (utilise Gemini par défaut)
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        click.echo("✨ Connexion sécurisée au moteur Antigravity...")
+        model = model_name or "gemini-1.5-pro"
+        return ChatGoogleGenerativeAI(model=model)
     else:
         raise ValueError(f"Provider {provider} non supporté.")
 
