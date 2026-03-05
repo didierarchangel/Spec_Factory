@@ -38,7 +38,8 @@ class SpecGraphManager:
     def __init__(self, model, project_root: str = "."):
         self.model = model
         self.root = Path(project_root)
-        self.prompts_dir = self.root / "agents"
+        # Les prompts sont internes au package
+        self.prompts_dir = Path(__file__).parent.parent / "agents"
         
         # Initialisation du graphe
         self.graph_builder = StateGraph(AgentState)

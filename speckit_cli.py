@@ -51,17 +51,61 @@ def init(path, here):
     (target_path / "Constitution" / "CONSTITUTION.md").touch()
     (target_path / "Constitution" / "etapes.md").touch()
     
-    # Initialisation du verrou .spec-lock.json
-    lock_file = target_path / ".spec-lock.json"
-    if not lock_file.exists():
-        initial_lock = {
-            "constitution_hash": "",
-            "completed_tasks": [],
-            "completed_specs": []
-        }
-        with open(lock_file, "w") as f:
-            json.dump(initial_lock, f, indent=4)
+    # Sélection interactive des IA (Style GitHub Spec-Kit)
+    click.echo("\n🤖 Configuration des IA partenaires (Sélectionnez une ou plusieurs) :")
+    available_ais = {
+        "1": ("Gemini-Cli", "google"),
+        "2": ("Claude", "anthropic"),
+        "3": ("GitHub Copilot", "copilot"),
+        "4": ("Codex-Cli", "openai")
+    }
     
+    selected_providers = []
+    while not selected_providers:
+        for key, (name, _) in available_ais.items():
+            click.echo(f" {key}) {name}")
+        
+        choices = click.prompt(
+            "Entrez les numéros séparés par une virgule (ex: 1,2,4)",
+            default="1",
+            type=str
+        )
+        
+        for c in choices.split(","):
+            c = c.strip()
+            if c in available_ais:
+                selected_providers.append(available_ais[c][1])
+            else:
+                click.echo(f"⚠️ Choix '{c}' invalide.")
+        
+        if not selected_providers:
+            click.echo("🛑 Veuillez sélectionner au moins une IA.")
+
+    # Initialisation du verrou .spec-lock.json avec les IA choisies
+    lock_file = target_path / ".spec-lock.json"
+    initial_lock = {
+        "version": "1.1",
+        "constitution_hash": "",
+        "completed_tasks": [],
+        "completed_specs": [],
+        "active_tasks": {},
+        "selected_ais": selected_providers
+    }
+    
+    # Si on est dans un projet existant, on fusionne ou on écrase
+    if lock_file.exists():
+        try:
+            with open(lock_file, "r") as f:
+                existing = json.load(f)
+                initial_lock["completed_tasks"] = existing.get("completed_tasks", [])
+                initial_lock["completed_specs"] = existing.get("completed_specs", [])
+        except:
+            pass
+
+    with open(lock_file, "w") as f:
+        json.dump(initial_lock, f, indent=4)
+    
+    click.echo(f"✅ IA configurées : {', '.join(selected_providers)}")
     click.echo("✅ Projet initialisé avec succès. La Constitution est prête.")
 
 def get_llm(provider: str, model_name: str = None):
@@ -78,12 +122,18 @@ def get_llm(provider: str, model_name: str = None):
         from langchain_openai import ChatOpenAI
         model = model_name or "gpt-4o"
         return ChatOpenAI(model=model)
+    elif provider == "copilot":
+        # Simulation via OpenAI ou spécifique Github si implémenté
+        from langchain_openai import ChatOpenAI
+        click.echo("💡 GitHub Copilot utilisé via l'API OpenAI (Codex compatible).")
+        model = model_name or "gpt-4-turbo"
+        return ChatOpenAI(model=model)
     else:
         raise ValueError(f"Provider {provider} non supporté.")
 
 @cli.command()
 @click.option('--task', required=True, help="ID de la tâche à exécuter (ex: 01_01)")
-@click.option('--provider', default="google", help="Provider IA (google, anthropic, openai)")
+@click.option('--provider', help="Provider IA (laisssez vide pour utiliser le premier choix du projet)")
 @click.option('--model', help="Nom du modèle spécifique")
 def run(task, provider, model):
     """Exécute une tâche sous verrouillage de contexte et de concurrence."""
@@ -100,6 +150,19 @@ def run(task, provider, model):
         return
 
     try:
+        # Sélection du provider par défaut si non spécifié
+        if not provider:
+            lock_file = Path(".spec-lock.json")
+            if lock_file.exists():
+                with open(lock_file, "r") as f:
+                    data = json.load(f)
+                    selected = data.get("selected_ais", [])
+                    if selected:
+                        provider = selected[0]
+            
+        if not provider:
+            provider = "google" # Fallback ultime
+            
         click.echo(f"🚀 Initialisation de l'IA ({provider})...")
         llm = get_llm(provider, model)
         
@@ -134,8 +197,14 @@ def run(task, provider, model):
         click.echo(f"✨ Tâche {task} terminée avec succès.")
         
     except Exception as e:
-        click.echo(f"❌ ERREUR lors de l'exécution : {e}")
-        logger.exception("Détails de l'erreur :")
+        error_msg = str(e).lower()
+        # Détection des erreurs de Quota / Auth (LangChain / Provider specific)
+        if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
+            click.echo("\n⚠️  [Modal Quota Reached]")
+            click.echo("💡 Veuillez activer votre clé API ou changer de modèle.\n")
+        else:
+            click.echo(f"❌ ERREUR lors de l'exécution : {e}")
+            logger.exception("Détails de l'erreur :")
     finally:
         # 5. Libération du verrou
         validator.release_task_lock(task)

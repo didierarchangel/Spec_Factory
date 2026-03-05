@@ -20,12 +20,13 @@ class SpecValidator:
         self.lock_file = self.root / ".spec-lock.json"
         self.constitution_path = self.root / "Constitution" / "CONSTITUTION.md"
         
-        # Fichiers vitaux du framework qui ne doivent jamais être altérés en douce
+        # Fichiers vitaux du framework (internes au package)
+        self.framework_root = Path(__file__).parent.parent
         self.core_files = [
-            self.root / "protocols" / "constitution_rules.md",
-            self.root / "protocols" / "task_protocol.md",
-            self.root / "protocols" / "verification_rules.md",
-            self.root / "templates" / "activation.md"
+            self.framework_root / "protocols" / "constitution_rules.md",
+            self.framework_root / "protocols" / "task_protocol.md",
+            self.framework_root / "protocols" / "verification_rules.md",
+            self.framework_root / "templates" / "activation.md"
         ]
 
     def calculate_hash(self, file_path: Path) -> str:
@@ -78,8 +79,8 @@ class SpecValidator:
         for core_file in self.core_files:
             if core_file.exists():
                 current_hash = self.calculate_hash(core_file)
-                # On utilise le chemin relatif avec des slash '/' comme clé universelle
-                rel_key = core_file.relative_to(self.root).as_posix()
+                # On utilise le nom du fichier comme clé (ou chemin relatif au framework)
+                rel_key = core_file.relative_to(self.framework_root).as_posix()
                 stored_hash = stored_core_hashes.get(rel_key, "")
                 
                 if stored_hash and current_hash != stored_hash:
@@ -179,10 +180,10 @@ class SpecValidator:
             except json.JSONDecodeError:
                 logger.warning("Le fichier .spec-lock.json existant est corrompu. Il sera écrasé.")
 
-        # Calcul des empreintes pour les "Core files"
+        # Calcul des empreintes pour les "Core files" (internes)
         for core_file in self.core_files:
             if core_file.exists():
-                rel_key = core_file.relative_to(self.root).as_posix()
+                rel_key = core_file.relative_to(self.framework_root).as_posix()
                 data["core_hashes"][rel_key] = self.calculate_hash(core_file)
         
         # Écriture finale
