@@ -71,7 +71,7 @@ def init(path, here):
         "2": ("Claude", "anthropic"),
         "3": ("GitHub Copilot", "copilot"),
         "4": ("Codex-Cli", "openai"),
-        "5": ("Gemini 1.5 Flash (Rapide)", "google-flash")
+        "5": ("Gemini 2.5 Flash (Rapide)", "google-flash")
     }
     
     selected_providers = []
