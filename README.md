@@ -2,7 +2,8 @@
 
 **Créé:** 2026
 **Status:** ✅ Prêt à l'emploi
-**Outils:** Entièrement automatisés via CLI
+**Licence:** ⚠️ Propriétaire (Tous droits réservés)
+**Communauté:** [Rejoindre le Discord](https://discord.gg/votre-lien)
 
 ---
 
@@ -14,7 +15,7 @@
 
 ```text
 1⃣️  Vous initialisez le projet
-     → python spec.py init
+     → speckit init
         ↓
 2⃣️  SPECKIT configure l'arborescence et votre Constitution
      (Vous définissez vos principes dans Constitution/CONSTITUTION.md)
@@ -22,7 +23,7 @@
 3⃣️  Vous organisez vos Tâches / Spécifications (App, Function, Tech)
         ↓
 4⃣️  SPECKIT Exécute une tâche sous verrouillage strict
-     → python spec.py run --task ID
+     → speckit run --task ID
         ↓
 5⃣️  L'IA valide que la Constitution est respectée avant toute action!
 ```
@@ -35,13 +36,13 @@ L'interface en ligne de commande professionnelle vous simplifie la vie :
 
 ```bash
 # Étape 1 : Initialiser le projet dans un nouveau dossier
-python spec.py init MonProjet
+speckit init MonProjet
 
 # Optionnel : Initialiser directement dans le dossier courant
-python spec.py init --here
+speckit init --here
 
 # Étape 2 : Lancer une tâche sous verrouillage contextuel
-python spec.py run --task 03_02
+speckit run --task 03_02
 ```
 
 ---
@@ -69,7 +70,7 @@ python spec.py run --task 03_02
 ### Étape 1: Initialiser le projet
 ```bash
 # Dans votre terminal
-python spec.py init --here
+speckit init --here
 ```
 
 **BOUM!** SPECKIT génère automatiquement l'arborescence sécurisée.
@@ -83,7 +84,7 @@ Remplacez le contenu par **VOS VRAIS PRINCIPES**.
 
 ### Étape 3: Lancer l'exécution
 ```bash
-python spec.py run --task 01_01
+speckit run --task 01_01
 ```
 L'agent d'exécution charge un contexte **strictement verrouillé** (Constitution + Etape + Architecture) pour s'assurer d'aligner le travail avec vos règles absolues.
 
@@ -132,12 +133,43 @@ Après avoir utilisé Speckit.Factory :
 
 ---
 
-## 🏆 Créateur
+## 🔒 Confidentialité & Propriété Intellectuelle
 
-**Didier KAZITALA**
-🏛️ RDC 2026
+**IMPORTANT :** Bien que ce dépôt soit public pour faciliter l'utilisation via `uv` ou `pip`, **Speckit.Factory n'est pas un projet Open Source.** 
 
-Système créé et maintenu avec ❤️ pour une IA rigoureuse, contextuelle et régie par des principes inviolables.
+- ⚖️ **Propriété :** Tous les droits sont réservés à **Didier KAZITALA**.
+- 🚫 **Copie :** Le clonage, la redistribution ou la modification non autorisée du code source à des fins de création de dérivés sont interdits.
+- 🤝 **Contributions :** Si vous souhaitez contribuer au projet ou suggérer des fonctionnalités, ne faites pas de Pull Request. Le développement est centralisé.
+
+## 👥 Communauté & Collaboration
+
+Pour bâtir une communauté forte autour de **Speckit.Factory**, rejoignez-nous sur Discord !
+
+👉 **[Rejoindre le serveur Discord Speckit](https://discord.gg/votre-lien)**
+
+C'est ici que nous discutons des évolutions, de la roadmap et que vous pouvez proposer votre aide pour faire grandir cet écosystème.
+
+---
+
+## 🛠️ Installation & Utilisation
+
+### Méthode 1 : Utilisation directe (Recommandée - via ⚡ [uv](https://astral.sh/uv/))
+Pas besoin de cloner le repo, exécutez simplement :
+```bash
+uvx --from git+https://github.com/didierarchangel/Speckit.Factory.git speckit init --here
+```
+
+### Méthode 2 : Installation via Git (Pour les utilisateurs)
+```bash
+pip install git+https://github.com/didierarchangel/Speckit.Factory.git
+```
+
+### Méthode 3 : Développement Local (Si vous avez cloné le repo)
+Pour utiliser `speckit` tout en modifiant le code source :
+```bash
+# Dans le dossier Speckit.Factory
+pip install -e .
+```
 
 ---
 
