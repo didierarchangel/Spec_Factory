@@ -59,7 +59,7 @@ def init(path, here):
         "2": ("Claude", "anthropic"),
         "3": ("GitHub Copilot", "copilot"),
         "4": ("Codex-Cli", "openai"),
-        "5": ("Antigravity (IDE)", "antigravity")
+        "5": ("Gemini 3 Flash (IDE)", "gemini_3_flash")
     }
     
     selected_providers = []
@@ -139,7 +139,7 @@ def get_llm(provider: str = None, model_name: str = None):
             except:
                 pass
     
-    provider = provider or "google" # Fallback ultime
+    provider = (provider or "google").lower() # Fallback ultime et case-insensibilité
     if provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
         model = model_name or "gemini-1.5-pro"
@@ -158,11 +158,11 @@ def get_llm(provider: str = None, model_name: str = None):
         click.echo("💡 GitHub Copilot utilisé via l'API OpenAI (Codex compatible).")
         model = model_name or "gpt-4-turbo"
         return ChatOpenAI(model=model)
-    elif provider == "antigravity":
-        # Provider spécifique à l'IDE Antigravity (utilise Gemini par défaut)
+    elif provider == "gemini_3_flash":
+        # Provider spécifique à l'IDE Antigravity (utilise Gemini 3 par défaut)
         from langchain_google_genai import ChatGoogleGenerativeAI
-        click.echo("✨ Connexion sécurisée au moteur Antigravity...")
-        model = model_name or "gemini-1.5-pro"
+        click.echo("✨ Connexion sécurisée au moteur Gemini 3 Flash (IDE)...")
+        model = model_name or "gemini-2.0-flash" # Utilisation de flash par défaut
         return ChatGoogleGenerativeAI(model=model)
     else:
         raise ValueError(f"Provider {provider} non supporté.")
