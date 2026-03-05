@@ -8,7 +8,7 @@
 
 ### ✨ Système Automatisé Complet
 
-**Speckit.Factory** estun framework **Constitutional DevOps AI** conçu pour gérer le cycle de vie complet de votre développement, de l'architecture aux tâches techniques, tout en garantissant le respect de vos principes fondamentaux (Constitution).
+**Speckit.Factory** est un framework **Constitutional DevOps AI** conçu pour gérer le cycle de vie complet de votre développement, de l'architecture aux tâches techniques, tout en garantissant le respect de vos principes fondamentaux (Constitution).
 
 **Voici comment ça marche:**
 
@@ -104,12 +104,14 @@ Avant toute exécution de `--task`, le **SpecValidator** vérifie l'intégrité 
 
 ## 🤖 Architecture Multi-IA Simultanée
 
-Contrairement à d'autres Spec-Kit sont souvent limités à une seule instance ou un seul modèle à la fois, **Speckit.Factory permet une collaboration SIMULTANÉE entre plusieurs IA**.
+Contrairement à d'autres Spec-Kit souvent limités à une seule instance ou un seul modèle à la fois, **Speckit.Factory permet une collaboration SIMULTANÉE entre plusieurs IA**.
 
 Parce que le framework repose sur un système de fichiers strict et un verrou d'intégrité, vous pouvez ouvrir votre projet dans **3 IA différentes au même moment** (ex: Gemini, Claude et Codex) sans conflit :
 
 *   **Synchronisation par le Fichier** : Toutes les IA lisent la même `CONSTITUTION.md`. Si vous modifiez un principe dans une IA, les autres en héritent immédiatement dès la prochaine lecture.
-*   **Division du Travail en Parallèle** : Vous pouvez demander à **Claude** de travailler sur une spécification dans `Task_Function1` pendant que **Gemini** implémente une tâche technique dans `Task1`, le tout coordonné par le `spec-lock.json`.
+
+*   **Division du Travail en Parallèle** : Vous pouvez demander à **Claude** de travailler sur une spécification dans `Task_Function1` pendant que **Gemini** implémente une tâche technique dans `Task1`
+
 *   **Intelligence Collective** : Utilisez la force de chaque modèle selon la tâche :
     *   **Gemini** pour l'analyse de code massive.
     *   **Claude** pour la rédaction de spécifications précises.
@@ -126,7 +128,6 @@ Après avoir utilisé Speckit.Factory :
 ✅ Comment structurer hermétiquement le cycle de vie d'une App (Architecture → Specs → Tech)
 ✅ Comment imposer des règles d'IA strictes grâce au pattern "Constitutional"
 ✅ Comment verrouiller le contexte de Prompting pour éviter les hallucinations
-✅ Comment maintenir un registre `.spec-lock.json` immuable
 ✅ Comment orchestrer **simultanément** plusieurs IA (Multi-Agent Sync) sans perdre la trace du projet
 
 ---
@@ -134,6 +135,7 @@ Après avoir utilisé Speckit.Factory :
 ## 🏆 Créateur
 
 **Didier KAZITALA**
+**RDC 2026**
 
 Système créé et maintenu avec ❤️ pour une IA rigoureuse, contextuelle et régie par des principes inviolables.
 
