@@ -161,7 +161,7 @@ def get_llm(provider: str = None, model_name: str = None):
         from langchain_google_genai import ChatGoogleGenerativeAI
         # Utilisation de noms plus robustes/récents pour éviter les 404
         if not model_name:
-            model = "gemini-1.5-pro-latest" if provider == "google" else "gemini-1.5-flash-latest"
+            model = "gemini-2.5-flash" if provider == "google" else "gemini-2.5-flash-lite"
         else:
             model = model_name
             
