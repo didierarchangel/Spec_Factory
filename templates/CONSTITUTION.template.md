@@ -30,12 +30,13 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 
 ### 1.2 Frontend (Si applicable)
 * **Langage** : [Ex: TypeScript]
-* **Framework** : [Ex: React 18, Vue 3, Svelte]
+* **Framework** : [Ex: React 18 (^18.2.0) avec Vite (^5.1.4)]
+* **Routage** : [Ex: react-router-dom (^6.22.3)]
 * **Styling** : [Ex: Tailwind CSS, Vanilla CSS]
 
-### 1.3 Outillage & Tests
+### 1.3 Outillage & Tests (Préférer des versions fixes)
 * **Linter/Formatter** : [Ex: ESLint, Prettier]
-* **Tests** : [Ex: Jest, Vitest]
+* **Tests** : [Ex: Jest (^29.7.0), Vitest]
 
 ---
 

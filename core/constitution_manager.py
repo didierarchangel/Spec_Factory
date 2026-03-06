@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,19 @@ class ConstitutionManager:
         """Produit la Constitution (Architecture, Standards, Stack) à partir d'une demande utilisateur."""
         logger.info("Analyse de la demande utilisateur pour génération de Constitution...")
         
+        # Charger les préférences de stack depuis le lock
+        lock_file = self.root / ".spec-lock.json"
+        stack_info = "Libre (selon pertinence)"
+        if lock_file.exists():
+            try:
+                with open(lock_file, "r") as f:
+                    data = json.load(f)
+                    prefs = data.get("stack_preferences", {})
+                    if prefs:
+                        stack_info = f"BACKEND: {prefs.get('backend')}, FRONTEND: {prefs.get('frontend')}"
+            except Exception as e:
+                logger.warning(f"Impossible de lire .spec-lock.json : {e}")
+
         base_template = ""
         if self.template_path.exists():
             base_template = self.template_path.read_text(encoding="utf-8")
@@ -28,20 +42,25 @@ class ConstitutionManager:
             
             La Constitution doit impérativement définir :
             1. L'Architecture (Folders, Layers)
-            2. La Stack Technique (Langages, Frameworks, DB) - LE BACKEND DOIT ÊTRE EN NODE.JS (SOIS PRÉCIS sur les versions).
-               - Privilégie Express ou NestJS pour le backend.
+            2. La Stack Technique (Langages, Frameworks, DB) - RESPECTE STRICTEMENT LES PRÉFÉRENCES SUIVANTES :
+               - STACK IMPOSÉE : {stack_info}
+               - Note : Si React ou Next.js sont choisis, ils DOIVENT impérativement utiliser Vite.
             3. Les Standards de Code (Naming, Security).
             4. Le Schéma de Données (si applicable).
 
             Utilise ce template comme base de structure :
             {template}
             
-            SOIS EXHAUSTIF. Ne fais pas de suppositions floues. Si l'utilisateur demande MongoDB, liste les collections nécessaires."""),
+            SOIS EXHAUSTIF. Ne fais pas de suppositions floues."""),
             ("user", "Demande utilisateur : {request}")
         ])
 
         chain = prompt | self.model | StrOutputParser()
-        content = chain.invoke({"template": base_template, "request": user_request})
+        content = chain.invoke({
+            "template": base_template, 
+            "request": user_request,
+            "stack_info": stack_info
+        })
 
         # Sauvegarde
         self.constitution_path.parent.mkdir(parents=True, exist_ok=True)

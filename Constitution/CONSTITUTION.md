@@ -14,11 +14,12 @@ Le projet suit une séparation stricte entre le Frontend et le Backend.
 - `/Task_App1` : Spécifications
 - `/Task1` : Implémentation technique
 
-### Stack Technologique :
-- **Backend** : Node.js avec Express.
-- **Frontend** : React.js (Vite).
-- **Base de données** : MongoDB (via Mongoose).
-- **Authentification** : JWT (JSON Web Tokens).
+### 1.2 Frontend (Si applicable)
+* **Langage** : TypeScript
+* **Framework** : React 18 (^18.2.0) avec Vite (^5.1.4)
+* **Routage** : react-router-dom (^6.22.3)
+* **Tests** : Jest (^29.7.0)
+* **Styling** : Vanilla CSS
 
 ## 3. STANDARDS DE DÉVELOPPEMENT
 - **API** : RESTful, format JSON.

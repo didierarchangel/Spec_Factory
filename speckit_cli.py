@@ -103,7 +103,33 @@ def init(path, here):
         if not selected_providers:
             click.echo("🛑 Veuillez sélectionner au moins une IA.")
 
-    # Initialisation du verrou .spec-lock.json avec les IA choisies
+    # Sélection interactive de la Stack
+    click.echo("\n🏗️ Configuration de la Stack Technique :")
+    
+    backend_choices = {
+        "1": "Node.js (Express)",
+        "2": "Node.js (NestJS)",
+        "3": "Python (FastAPI)",
+        "4": "Python (Flask)"
+    }
+    click.echo("--- Backend ---")
+    for k, v in backend_choices.items(): click.echo(f" {k}) {v}")
+    b_choice = click.prompt("Votre choix de Backend", default="1", type=click.Choice(list(backend_choices.keys())))
+    selected_backend = backend_choices[b_choice]
+
+    frontend_choices = {
+        "1": "React (Vite)",
+        "2": "Next.js (Vite)",
+        "3": "Vue.js (Vite)",
+        "4": "Python (Django Templates)",
+        "5": "Aucun (API Pure)"
+    }
+    click.echo("\n--- Frontend ---")
+    for k, v in frontend_choices.items(): click.echo(f" {k}) {v}")
+    f_choice = click.prompt("Votre choix de Frontend", default="1", type=click.Choice(list(frontend_choices.keys())))
+    selected_frontend = frontend_choices[f_choice]
+
+    # Initialisation du verrou .spec-lock.json avec les IA et la Stack choisies
     lock_file = target_path / ".spec-lock.json"
     initial_lock = {
         "version": "1.1",
@@ -111,7 +137,11 @@ def init(path, here):
         "completed_tasks": [],
         "completed_specs": [],
         "active_tasks": {},
-        "selected_ais": selected_providers
+        "selected_ais": selected_providers,
+        "stack_preferences": {
+            "backend": selected_backend,
+            "frontend": selected_frontend
+        }
     }
     
     # Si on est dans un projet existant, on fusionne ou on écrase
