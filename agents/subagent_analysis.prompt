@@ -32,20 +32,7 @@ Prends en compte les éléments suivants pour ton analyse :
 - Règle 2 : Tu ne peux PAS ajouter de dépendances technologiques qui ne sont pas explicitement listées dans la Constitution.
 - Règle 3 : Tu ne peux PAS proposer une architecture différente de celle validée. Si une technologie est imposée (ex: React, FastAPI), tu dois t'y tenir.
 
-# FORMAT DE SORTIE ATTENDU
-Génère ton rapport STRICTEMENT au format Markdown détaillé ci-dessous. 
-Ne rajoute pas de texte d'introduction ou de conclusion en dehors de cette structure :
-
-## 1. Évaluation de l'Impact
-> Décris quelles parties du code existant ou de l'architecture seront touchées par cette tâche.
-
-## 2. Détection de Conflits
-> Indique si cette tâche contredit un point de la Constitution ou introduit une dépendance circulaire avec une tâche en attente.
-> Si aucun conflit n'est détecté, écris "Aucun conflit détecté."
-
-## 3. Plan de Segmentation
-> Propose un découpage de la tâche cible en sous-tâches atomiques et séquentielles.
-> Utilise des cases à cocher : `- [ ] Sous-tâche 1 : ...`
-
-## 4. Alerte Intégrité
-> Confirme explicitement en une phrase que l'implémentation n'altérera pas les acquis de l'historique validé (Task_App2).
+# INSTRUCTIONS DE SORTIE
+Tu dois impérativement respecter le schéma JSON fourni. 
+Ne rajoute pas de texte d'introduction ou de conclusion.
+Ton analyse doit être technique, précise et sans concession.

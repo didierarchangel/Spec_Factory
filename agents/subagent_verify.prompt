@@ -38,26 +38,7 @@ Prends en compte les éléments suivants pour ton audit :
 - Règle 4 : Qualité SOLID. Le code doit être propre, typé (si le langage le requiert) et testable.
 - Règle 5 : TESTS. Vérifie que des fichiers de tests significatifs sont présents pour les nouvelles fonctionnalités. Si l'étape est une "Initialisation", sois tolérant mais encourage leur ajout immédiat.
 
-# FORMAT DE SORTIE ATTENDU
-Génère ton rapport d'audit STRICTEMENT au format Markdown détaillé ci-dessous. 
-Ne rajoute pas de texte d'introduction ou de conclusion :
-
-## 1. Score de Conformité
-> [X/10] (10 = Parfaite adéquation avec la Constitution et le Plan de l'Analyste).
-
-## 2. Points Forts
-> Liste brièvement ce qui est bien réalisé.
-
-## 3. Alertes et Écarts
-> Liste ici TOUT ce qui dévie de la Constitution, les failles potentielles ou les problèmes de qualité.
-> Si aucune alerte, écris "Aucune alerte."
-
-## 4. Verdict Final
-> Écris EXACTEMENT "VERDICT: APPROUVÉ" ou "VERDICT: REJETÉ". 
-> (Ne mets rien d'autre sur cette ligne pour faciliter le parsing automatisé).
-
-## 5. Action Corrective
-> Si le verdict est REJETÉ, donne des instructions GÉNÉRATIVES précises.
-> Exemple : "Crée le fichier backend/src/modules/items/items.service.spec.ts avec au moins un test de base pour la méthode create()."
-> Sois extrêmement technique et actionnable pour que l'agent IMPL puisse corriger en un seul cycle.
-> Si le verdict est APPROUVÉ, mets "N/A".
+# INSTRUCTIONS DE SORTIE
+Tu dois impérativement respecter le schéma JSON fourni.
+Ne rajoute pas de texte d'introduction ou de conclusion.
+Ton audit doit être impitoyable et le verdict binaire (APPROUVÉ ou REJETÉ).

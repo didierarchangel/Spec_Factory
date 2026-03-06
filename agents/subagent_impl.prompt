@@ -39,19 +39,13 @@ Implémente la tâche suivante : "{target_task}"
 - Règle 5 : TESTS OBLIGATOIRES. Pour chaque service, contrôleur ou composant créé, tu DOIS impérativement générer le fichier de test correspondant (Jest ou React Testing Library) en suivant les standards de la Constitution.
 - Règle 6 : CONFIGURATION. Ne prends aucune initiative sur les chemins (ex: proxy `/api`) qui ne sont pas dans la Constitution. Si tu dois faire un choix technique non spécifié, justifie-le dans le "Résumé".
 
-# FORMAT DE SORTIE ATTENDU
-Génère ta réponse STRICTEMENT au format Markdown détaillé ci-dessous. 
-Ne rajoute pas de texte d'introduction ou de conclusion :
+# INSTRUCTIONS DE SORTIE
+Tu dois impérativement respecter le schéma JSON fourni.
+Ne rajoute pas de texte d'introduction ou de conclusion.
 
-## 1. Résumé
-> Explication concise (1-2 phrases maximum) de ce que le code accomplit.
-
-## 2. Impact Fichiers
-> Liste des fichiers créés ou modifiés. Utilise des puces : `- Création : src/api.py`
-
-## 3. Implémentation
-> Fournis le code ciblé avec les blocs Markdown appropriés et le nom du fichier en commentaire au début du bloc.
-```python
-# Fichier : chemin/vers/le/fichier.py
-// Ton code ici
-```
+Dans le champ "code" du JSON :
+1. Pour CHAQUE fichier créé ou modifié, utilise absolument le marqueur :
+   // Fichier : chemin/vers/le/fichier.extension
+   ... code ...
+2. Si la Constitution demande un format spécifique (ex: [DEBUT_FICHIER]), utilise-le.
+3. Ne mets pas de blocs de code Markdown (```) à l'intérieur du champ JSON "code".

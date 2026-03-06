@@ -395,7 +395,9 @@ def run(task, provider, model):
             "analysis_output": "",
             "code_to_verify": "",
             "validation_status": "",
-            "feedback_correction": ""
+            "feedback_correction": "",
+            "error_count": 0,
+            "last_error": ""
         }
         
         # Exécution du graphe
