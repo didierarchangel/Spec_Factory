@@ -50,7 +50,7 @@ Tu dois produire un JSON pur. Aucun texte avant ou après.
 Dans le champ "code" du JSON :
 1. ⚠️ **RÈGLE CRITIQUE D'ÉCHAPPEMENT** : Tu écris du code à l'intérieur d'une string JSON. Toutes les doubles quotes `"` de ton code DOIVENT être échappées par un backslash : `\"`.
 2. ⚠️ **JSON DANS LE CODE** : Si tu génères un fichier `.json` (ex: `package.json`), les guillemets internes du fichier doivent aussi être échappés.
-   * EXEMPLE DE CODE VALIDE DANS LE JSON : `\"scripts\": { \"test\": \"jest\" }`
+   * EXEMPLE DE CODE VALIDE DANS LE JSON : `\"scripts\": {{ \"test\": \"jest\" }}`
 3. 📦 **STRUCTURE package.json** : Les scripts DOIVENT être des chaînes uniques, JAMAIS des tableaux.
    * MAUVAIS: `\"lint\": [\"cmd1\", \"cmd2\"]`
    * BON: `\"lint\": \"cmd1 && cmd2\"`
