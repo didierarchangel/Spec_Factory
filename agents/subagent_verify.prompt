@@ -40,6 +40,7 @@ Prends en compte les éléments suivants pour ton audit :
 - Règle 3 : Non-Régression. Le code ne doit en aucun cas interférer destructivement avec {completed_tasks_summary}.
 - Règle 4 : Qualité SOLID. Le code doit être propre, typé (si le langage le requiert) et testable.
 - Règle 5 : TESTS. Vérifie que des fichiers de tests significatifs sont présents pour les nouvelles fonctionnalités. Si l'étape est une "Initialisation", sois tolérant mais encourage leur ajout immédiat.
+- Règle 6 : DÉPENDANCES. Vérifie que chaque import dans le code est bien présent dans le `package.json`. Rejette si une dépendance est oubliée ou si une bibliothèque non-autorisée (ex: `joi` au lieu de `class-validator`) est utilisée.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois produire un JSON pur. Aucun texte avant ou après.

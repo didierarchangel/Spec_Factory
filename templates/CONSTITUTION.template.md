@@ -59,7 +59,19 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 
 ---
 
-## 4. FORMAT TÂCHES ET TRAÇABILITÉ
+## 4. NORMES DE DÉVELOPPEMENT (COHÉRENCE)
+### 4.1 Backend (NestJS/TypeScript)
+* **Décorateurs** : Activer obligatoirement `experimentalDecorators: true` dans le `tsconfig.json`.
+* **Validation** : Toute API doit utiliser des DTO avec `class-validator` et `class-transformer`.
+* **Zéro Placeholder** : Tout code généré doit être complet et fonctionnel.
+
+### 4.2 Frontend (React/Vite)
+* **Composants** : Préférer les composants fonctionnels avec Hooks.
+* **Typage** : TypeScript strict activé.
+
+---
+
+## 5. FORMAT TÂCHES ET TRAÇABILITÉ
 Lors de la création d'un nouveau fichier source, celui-ci doit intégrer l'en-tête de traçabilité officiel :
 ```text
 /**

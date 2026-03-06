@@ -453,25 +453,22 @@ def run(task, provider, model):
             code = final_state.get("code_to_verify", "")
             
             if code:
-                # Regex multi-format : 
-                # 1. [DEBUT_FICHIER: path] (Nouveau format strict)
-                # 2. // Fichier : path
-                # 3. // path (avec extension)
-                pattern = r'(?m)^(?://|#)\s*(?:---\s*)?(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*)?([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?\s*(?:---\s*)?.*$'
+                # Regex multi-format plus robuste
+                # Supporte: // Fichier : path, # Fichier : path, [DEBUT_FICHIER: path], etc.
+                pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
                 file_blocks = re.split(pattern, code)
                 
                 if len(file_blocks) > 1:
-                    # Le premier élément est le texte avant le premier fichier
                     for i in range(1, len(file_blocks), 2):
                         file_path = file_blocks[i].strip()
                         file_content = file_blocks[i+1].strip()
                         
-                        # Nettoyage des marqueurs de fin [FIN_FICHIER: ...] si l'IA les a mis
+                        # 1. Nettoyage des marqueurs [FIN_FICHIER]
                         file_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', file_content)
                         
-                        # Nettoyage des backticks
-                        file_content = re.sub(r'^```\w*\n', '', file_content)
-                        file_content = re.sub(r'\n```$', '', file_content)
+                        # 2. Nettoyage agressif des blocs de code Markdown (partout dans le bloc)
+                        file_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', file_content)
+                        file_content = file_content.replace('```', '')
                         
                         if fm.safe_write(file_path, file_content.strip()):
                             click.echo(f"💾 Fichier sauvegardé : {file_path}")

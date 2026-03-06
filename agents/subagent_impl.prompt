@@ -41,6 +41,8 @@ Implémente la tâche suivante : "{target_task}"
 - Règle 4 : Modularité et Testabilité. Chaque fonction doit être prête à être testée.
 - Règle 5 : TESTS OBLIGATOIRES. Pour chaque service, contrôleur ou composant créé, tu DOIS impérativement générer le fichier de test correspondant (Jest ou React Testing Library) en suivant les standards de la Constitution.
 - Règle 6 : CONFIGURATION. Ne prends aucune initiative sur les chemins (ex: proxy `/api`) qui ne sont pas dans la Constitution. Si tu dois faire un choix technique non spécifié, justifie-le dans le "Résumé".
+- Règle 7 : 📦 **SYNCHRONISATION PACKAGE.JSON**. Si tu ajoutes un `import` d'une bibliothèque tierce, tu DOIS impérativement l'ajouter à la section `dependencies` ou `devDependencies` du `package.json` correspondant.
+- Règle 8 : 🚫 **INTERDICTION JOI / HORS-CONSTITUTION**. N'utilise JAMAIS de bibliothèques comme `joi` si la Constitution spécifie `class-validator`. Tiens-en toi STRICTEMENT à la stack technique listée. L'utilisation d'une lib non-listée est une faute grave.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois produire un JSON pur. Aucun texte avant ou après.
