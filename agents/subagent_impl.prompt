@@ -42,13 +42,23 @@ Implémente la tâche suivante : "{target_task}"
 - Règle 5 : TESTS OBLIGATOIRES. Pour chaque service, contrôleur ou composant créé, tu DOIS impérativement générer le fichier de test correspondant (Jest ou React Testing Library) en suivant les standards de la Constitution.
 - Règle 6 : CONFIGURATION. Ne prends aucune initiative sur les chemins (ex: proxy `/api`) qui ne sont pas dans la Constitution. Si tu dois faire un choix technique non spécifié, justifie-le dans le "Résumé".
 
-# INSTRUCTIONS DE SORTIE
-Tu dois impérativement respecter le schéma JSON fourni.
-Ne rajoute pas de texte d'introduction ou de conclusion.
+# INSTRUCTIONS DE SORTIE (IMPÉRATIF)
+Tu dois produire un JSON pur. Aucun texte avant ou après.
 
 Dans le champ "code" du JSON :
-1. Pour CHAQUE fichier créé ou modifié, utilise absolument le marqueur :
-   // Fichier : chemin/vers/le/fichier.extension
-   ... code ...
-2. Si la Constitution demande un format spécifique (ex: [DEBUT_FICHIER]), utilise-le.
-3. Ne mets pas de blocs de code Markdown (```) à l'intérieur du champ JSON "code".
+1. ⚠️ **RÈGLE CRITIQUE D'ÉCHAPPEMENT** : Tu écris du code à l'intérieur d'une string JSON. Toutes les doubles quotes `"` de ton code DOIVENT être échappées par un backslash : `\"`.
+2. ⚠️ **JSON DANS LE CODE** : Si tu génères un fichier `.json` (ex: `package.json`), les guillemets internes du fichier doivent aussi être échappés.
+   * EXEMPLE DE CODE VALIDE DANS LE JSON : `\"scripts\": { \"test\": \"jest\" }`
+3. 📦 **STRUCTURE package.json** : Les scripts DOIVENT être des chaînes uniques, JAMAIS des tableaux.
+   * MAUVAIS: `\"lint\": [\"cmd1\", \"cmd2\"]`
+   * BON: `\"lint\": \"cmd1 && cmd2\"`
+
+# EXEMPLE DE RÉPONSE ATTENDUE (MODÈLE ABSOLU)
+```json
+{
+  "resume": "Brève description des changements",
+  "impact_fichiers": ["src/app.ts", "package.json"],
+  "code": "// Fichier : src/app.ts\nconsole.log(\"Hello World\");\n\n// Fichier : package.json\n{\n  \"name\": \"my-app\",\n  \"scripts\": {\n    \"test\": \"jest\"\n  }\n}"
+}
+```
+*(Note: Dans le champ "code", assure-toi que les sauts de ligne sont représentés par `\n` et les guillemets par `\"`)*
