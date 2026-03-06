@@ -250,42 +250,71 @@ class SpecGraphManager:
         """Nœud Intermédiaire : Exécution réelle des commandes de diagnostic."""
         logger.info("🛠️ Lancement des diagnostics réels du terminal...")
         
-        commands = []
-        if (self.root / "package.json").exists():
-            commands.append("npm run build")
-        elif (self.root / "pyproject.toml").exists():
-            commands.append("pytest")
-            
-        if not commands:
-            logger.info("ℹ️ Aucun script de diagnostic automatisé trouvé à la racine.")
-            return {"terminal_diagnostics": "Aucun outil de diagnostic configuré."}
-            
         diagnostics = []
         import subprocess
         
-        for cmd in commands:
-            logger.info(f"🏃 Exécution de : {cmd}")
-            try:
-                result = subprocess.run(
-                    cmd, 
-                    shell=True, 
-                    capture_output=True, 
-                    text=True, 
-                    cwd=str(self.root),
-                    timeout=60
-                )
+        search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+        found_something = False
+        
+        for target_dir in search_dirs:
+            if (target_dir / "package.json").exists():
+                found_something = True
+                dir_name = target_dir.name if target_dir.name else "racine"
                 
-                if result.returncode != 0:
-                    error_report = f"❌ ÉCHEC de [{cmd}] :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
-                    diagnostics.append(error_report)
-                else:
-                    diagnostics.append(f"✅ SUCCÈS de [{cmd}]")
+                # Auto-install dependencies if node_modules is missing
+                if not (target_dir / "node_modules").exists():
+                    logger.info(f"⏳ Installation des dépendances (npm install) dans {dir_name}...")
+                    try:
+                        # On exécute npm install silencieusement pour ne pas polluer les logs
+                        subprocess.run("npm install > nul 2>&1", shell=True, cwd=str(target_dir), timeout=180)
+                    except Exception as e:
+                        diagnostics.append(f"❌ ERREUR lors de npm install dans {dir_name}: {str(e)}")
+                
+                cmd = "npm run build"
+                logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
+                try:
+                    result = subprocess.run(
+                        cmd, 
+                        shell=True, 
+                        capture_output=True, 
+                        text=True, 
+                        cwd=str(target_dir),
+                        timeout=90
+                    )
                     
-            except subprocess.TimeoutExpired:
-                diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}]")
-            except Exception as e:
-                diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] : {str(e)}")
-                
+                    if result.returncode != 0:
+                        # Si le script 'build' n'existe pas, npm renvoie une erreur spécifique, on peut l'ignorer ou le signaler
+                        if "Missing script: \"build\"" in result.stderr or "Missing script: build" in result.stderr:
+                            diagnostics.append(f"ℹ️ Aucun script 'build' dans {dir_name}.")
+                        else:
+                            error_report = f"❌ ÉCHEC de [{cmd}] dans {dir_name} :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+                            diagnostics.append(error_report)
+                    else:
+                        diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
+                        
+                except subprocess.TimeoutExpired:
+                    diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}] dans {dir_name}")
+                except Exception as e:
+                    diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] dans {dir_name} : {str(e)}")
+
+            if (target_dir / "pyproject.toml").exists() or (target_dir / "requirements.txt").exists():
+                found_something = True
+                dir_name = target_dir.name if target_dir.name else "racine"
+                cmd = "pytest"
+                logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
+                try:
+                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
+                    if result.returncode != 0:
+                        diagnostics.append(f"❌ ÉCHEC de [{cmd}] dans {dir_name}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+                    else:
+                        diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
+                except Exception as e:
+                    diagnostics.append(f"❌ ERREUR exécutant [{cmd}] dans {dir_name}: {str(e)}")
+            
+        if not found_something:
+            logger.info("ℹ️ Aucun script de diagnostic automatisé trouvé (ni package.json, ni Python config).")
+            return {"terminal_diagnostics": "Aucun outil de diagnostic configuré."}
+            
         full_report = "\n---\n".join(diagnostics)
         logger.info("✅ Diagnostics terminés.")
         return {"terminal_diagnostics": full_report}
