@@ -35,7 +35,9 @@ Implémente la tâche suivante : "{target_task}"
 - Règle 1 : Ne modifie JAMAIS le code existant relatif à l'historique validé (Task_App2) sans instruction explicite de l'Analyste.
 - Règle 2 : Interdiction formelle d'utiliser des bibliothèques, dépendances ou frameworks non mentionnés dans la Constitution.
 - Règle 3 : Sécurité avant tout. Si tu détectes que la tâche demandée crée une faille par rapport aux normes de la Constitution, signale-le.
-- Règle 4 : Modularité. Chaque fonction doit suivre les principes SOLID et être prête à être testée.
+- Règle 4 : Modularité et Testabilité. Chaque fonction doit être prête à être testée.
+- Règle 5 : TESTS OBLIGATOIRES. Pour chaque service, contrôleur ou composant créé, tu DOIS impérativement générer le fichier de test correspondant (Jest ou React Testing Library) en suivant les standards de la Constitution.
+- Règle 6 : CONFIGURATION. Ne prends aucune initiative sur les chemins (ex: proxy `/api`) qui ne sont pas dans la Constitution. Si tu dois faire un choix technique non spécifié, justifie-le dans le "Résumé".
 
 # FORMAT DE SORTIE ATTENDU
 Génère ta réponse STRICTEMENT au format Markdown détaillé ci-dessous. 

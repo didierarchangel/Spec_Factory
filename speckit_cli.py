@@ -143,6 +143,21 @@ Toute IA (Gemini, Claude, Copilot) opérant dans ce dossier DOIT :
 
     # Création du fichier .env.example
     setup_env_logic(target_path)
+    
+    # Création du .gitignore par défaut pour le projet cible
+    gitignore_path = target_path / ".gitignore"
+    if not gitignore_path.exists():
+        gitignore_content = """# 🛡️ Speckit.Factory - Project GitIgnore
+.env
+.env.*
+node_modules/
+dist/
+build/
+.spec-lock.json
+*.log
+"""
+        gitignore_path.write_text(gitignore_content, encoding="utf-8")
+        click.echo("✅ Fichier `.gitignore` par défaut créé.")
 
     click.echo(f"✅ IA configurées : {', '.join(selected_providers)}")
     click.echo("✅ PROJET INITIALISÉ. Fichier de gouvernance `.speckit-rules` créé.")
@@ -150,12 +165,14 @@ Toute IA (Gemini, Claude, Copilot) opérant dans ce dossier DOIT :
     click.echo("👉 Prochaine étape : `speckit specify 'votre demande ici'`")
 
 def setup_env_logic(target_path: Path):
-    """Logique de création du fichier .env.example."""
+    """Logique de création du fichier .env.example (TEMPLATE UNIQUEMENT)."""
+    # On s'assure qu'on ne copie JAMAIS les clés du .env principal
     env_example_path = target_path / ".env.example"
-    content = """# 🔑 Speckit.Factory - Clés API
+    content = """# 🔑 Speckit.Factory - Clés API (Template)
 # Renommez ce fichier en .env pour activer les IA
+# NE JAMAIS COMMITTER VOTRE VRAI FICHIER .env
 
-# Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro)
+# Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite)
 # Get one at https://aistudio.google.com/app/apikey
 GOOGLE_API_KEY=votre_cle_ici
 
