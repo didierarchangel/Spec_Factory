@@ -63,29 +63,115 @@ class SpecGraphManager:
         return path.read_text(encoding="utf-8")
 
     def _safe_parse_json(self, content: str, pydantic_object) -> dict:
-        """Nettoie et parse le JSON, même s'il est entouré de backticks Markdown."""
+        """Nettoie et parse le JSON avec des fallbacks robustes pour les grands volumes de code."""
         cleaned = content.strip()
+        result = {}
         
-        # 1. Nettoyage des backticks Markdown (```json ... ```)
-        if "```" in cleaned:
-            import re
-            # Regex pour capturer le contenu entre les triples backticks
-            match = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, re.DOTALL)
-            if match:
-                cleaned = match.group(1).strip()
+        # --- EXTRACTION DU CODE MARKDOWN (NOUVEAU FORMAT) ---
+        import re
+        code_block_match = re.search(r"```code\s*(.*?)\s*```", cleaned, re.DOTALL)
+        if code_block_match:
+            result["code"] = code_block_match.group(1).strip()
+        else:
+            # Fallback si le LLM n'utilise pas la balise ```code``` exacte
+            code_block_match = re.search(r"```(?!(?:json|markdown))\w*\s*(?:// Fichier|# Fichier|/\* Fichier)(.*?)\s*```", cleaned, re.DOTALL)
+            if code_block_match:
+                # On remet le marqueur de fichier qu'on a matché
+                first_line = re.search(r"(?:// Fichier|# Fichier|/\* Fichier)", cleaned).group(0)
+                result["code"] = first_line + code_block_match.group(1)
             else:
-                # Si pas de fermeture, on essaie de nettoyer le début
-                cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-                cleaned = re.sub(r"\s*```$", "", cleaned)
+                result["code"] = ""
+                
+        # --- EXTRACTION DU JSON ---
+        # 1. Nettoyage des backticks Markdown (```json ... ```)
+        json_content = cleaned
+        if "```json" in json_content:
+            match = re.search(r"```json\s*(.*?)\s*```", json_content, re.DOTALL)
+            if match:
+                json_content = match.group(1).strip()
+            else:
+                json_content = re.sub(r"^```json\s*", "", json_content)
+        elif "```" in json_content:
+             # S'il y a un bloc ``` générique au début, on assume que c'est le json
+             match = re.search(r"^```\s*(\{.*?\})\s*```", json_content, re.DOTALL)
+             if match:
+                 json_content = match.group(1).strip()
+        
+        # On essaie d'isoler uniquement la partie dictionnaire { ... } si d'autres choses trainent
+        match_dict = re.search(r"(\{.*\})", json_content, re.DOTALL)
+        if match_dict:
+            json_content = match_dict.group(1)
         
         # 2. Parsing via LangChain JsonOutputParser
         parser = JsonOutputParser(pydantic_object=pydantic_object)
         try:
-            return parser.parse(cleaned)
+            parsed_json = parser.parse(json_content)
+            result.update(parsed_json)
+            # Si le code était dans le JSON malencontreusement (ancien format), on le prend
+            if not result.get("code") and parsed_json.get("code"):
+                 result["code"] = parsed_json.get("code")
+            return result
         except Exception as e:
-            logger.error(f"Échec du parsing JSON final : {str(e)}")
-            logger.debug(f"Contenu problématique : {cleaned}")
-            raise
+            logger.warning(f"⚠️ Échec du parsing JSON standard : {str(e)}. Lancement du Fallback d'extraction agressive...")
+            
+            # 3. Fallback : Extraction manuelle par Regex si LangChain échoue
+            try:
+                # Extraction du champ "resume" ou "verdict_final"
+                resume_match = re.search(r'"(?:resume|verdict_final)"\s*:\s*"([^"]+)"', json_content)
+                if resume_match:
+                    result["resume"] = resume_match.group(1)
+                    result["verdict_final"] = resume_match.group(1)
+                else:
+                    result["resume"] = ""
+                    result["verdict_final"] = ""
+
+                # Extraction du score
+                score_match = re.search(r'"score_conformite"\s*:\s*"([^"]+)"', json_content)
+                if score_match: result["score_conformite"] = score_match.group(1)
+
+                # Extraction des alertes
+                alertes_match = re.search(r'"alertes"\s*:\s*"([^"]+)"', json_content)
+                if alertes_match: result["alertes"] = alertes_match.group(1)
+
+                # Extraction de l'action corrective
+                action_match = re.search(r'"action_corrective"\s*:\s*"([^"]+)"', json_content)
+                if action_match: result["action_corrective"] = action_match.group(1)
+                    
+                # Extraction du champ "impact_fichiers" (Liste JSON)
+                impact_match = re.search(r'"impact_fichiers"\s*:\s*\[(.*?)\]', json_content, re.DOTALL)
+                if impact_match:
+                    impact_list = impact_match.group(1)
+                    # Trouve toutes les chaînes entre guillemets
+                    files = re.findall(r'"([^"]+)"', impact_list)
+                    result["impact_fichiers"] = files
+                else:
+                    if "impact_fichiers" not in result:
+                        result["impact_fichiers"] = []
+                    
+                # Si l'ancien format 'code dans JSON' était utilisé mais cassé
+                if not result.get("code"):
+                    code_match = re.search(r'"code"\s*:\s*"(.*)"\s*}?\s*$', json_content, re.DOTALL)
+                    if code_match:
+                        raw_code = code_match.group(1)
+                        raw_code = raw_code.replace('\\n', '\n').replace('\\"', '"').replace('\\t', '\t')
+                        raw_code = re.sub(r'"\s*}\s*$', '', raw_code)
+                        result["code"] = raw_code
+                        
+                # Si on a un code ou un impact_fichiers, c'est suffisant pour impl_node
+                if result.get("code") or result.get("impact_fichiers"):
+                    logger.info("✅ Fallback d'extraction réussi.")
+                    return result
+                
+                # Si on est dans verify_node et qu'on a le verdict, c'est bon
+                if result.get("verdict_final"):
+                    logger.info("✅ Fallback d'extraction réussi (Verify).")
+                    return result
+                    
+                raise ValueError("Le fallback n'a pas pu extraire de données significatives.")
+                    
+            except Exception as fallback_error:
+                logger.error(f"❌ Échec total du parsing JSON et du fallback : {str(fallback_error)}")
+                raise e # On relève l'erreur originale de LangChain
 
     # ─── 2. Nœuds (fonctions de traitement) ───────────────────────────────
 

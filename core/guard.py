@@ -32,7 +32,9 @@ class SubagentImplOutput(BaseModel):
     """Schéma de sortie attendu pour subagent_impl.prompt."""
     resume: str = Field(description="Explication concise de ce que le code accomplit.")
     impact_fichiers: List[str] = Field(description="Liste des fichiers créés ou modifiés.")
-    code: str = Field(description="Le code source complet généré, sans bloc markdown autour (le code brut).")
+    # Le champ 'code' ne doit plus être géré par LangChain directement dans le JSON pour éviter les crash de parsing.
+    # Il est extrait manuellement depuis le bloc texte markdown qui suit le JSON.
+    # Optionnel ici pour ne pas crasher si le LLM le met en dehors comme demandé.
 
 
 class SubagentVerifyOutput(BaseModel):
