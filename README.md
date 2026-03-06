@@ -55,12 +55,6 @@ speckit run --task 03_02
 ├── 🏛️ Constitution/
 │   ├── CONSTITUTION.md      ← VOS PRINCIPES FONDAMENTAUX
 │   └── etapes.md            ← Suivi des étapes
-├── 🏗️ Task_App1/            ← Architecture (Tâches non réalisées)
-├── 🏗️ Task_App2/            ← Architecture (Tâches réalisées)
-├── 📝 Task_Function1/       ← Spécifications (Non réalisées)
-├── 📝 Task_Function2/       ← Spécifications (Réalisées)
-├── 🛠️ Task1/                ← Tâches Techniques (Non réalisées)
-└── 🛠️ Task2/                ← Tâches Techniques (Réalisées)
 ```
 
 ---
@@ -111,7 +105,7 @@ Parce que le framework repose sur un système de fichiers strict et un verrou d'
 
 *   **Synchronisation par le Fichier** : Toutes les IA lisent la même `CONSTITUTION.md`. Si vous modifiez un principe dans une IA, les autres en héritent immédiatement dès la prochaine lecture.
 
-*   **Division du Travail en Parallèle** : Vous pouvez demander à **Claude** de travailler sur une spécification dans `Task_Function1` pendant que **Gemini** implémente une tâche technique dans `Task1`
+*   **Division du Travail en Parallèle** : Vous pouvez utiliser différentes IA pour des tâches distinctes, le tout synchronisé par le `.spec-lock.json`.
 
 *   **Intelligence Collective** : Utilisez la force de chaque modèle selon la tâche :
     *   **Gemini** pour l'analyse de code massive.

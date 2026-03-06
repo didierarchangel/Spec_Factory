@@ -21,14 +21,14 @@ Prends en compte les éléments suivants pour ton analyse :
 
 2. STATUT D'AVANCEMENT :
 - Étape en cours : {current_step}
-- Historique validé (Task_App2) : {completed_tasks_summary}
+- Historique validé : {completed_tasks_summary}
 - Autres tâches en attente : {pending_tasks}
 
 # TÂCHE CIBLE À ANALYSER
 "{target_task}"
 
 # RÈGLES ANTI-HALLUCINATION (STRICT MÊME POUR LES GRANDS MODÈLES)
-- Règle 1 : Tu ne peux PAS modifier une tâche déjà présente dans l'historique de réalisation (Task_App2).
+- Règle 1 : Tu ne peux PAS modifier une tâche déjà présente dans l'historique de réalisation.
 - Règle 2 : Tu ne peux PAS ajouter de dépendances technologiques qui ne sont pas explicitement listées dans la Constitution.
 - Règle 3 : Tu ne peux PAS proposer une architecture différente de celle validée. Si une technologie est imposée (ex: React, FastAPI), tu dois t'y tenir.
 

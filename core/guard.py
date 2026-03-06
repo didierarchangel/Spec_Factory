@@ -11,7 +11,7 @@ from typing import List
 # ==============================================================================
 
 class TaskAppOutput(BaseModel):
-    """Schéma de sortie attendu pour l'initialisation des dossiers Task_App."""
+    """Schéma de sortie attendu pour l'initialisation."""
     task_app1: str = Field(description="Contenu Markdown listant les tâches non réalisées (- [ ] Tâche)")
     task_app2: str = Field(description="Contenu Markdown listant les tâches réalisées (généralement vide au départ)")
 

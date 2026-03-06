@@ -13,18 +13,18 @@ Description  : Règles d'Audit strictes pour l'agent de Vérification (subagent_
 **Version :** 1.1
 **Framework :** Speckit.Factory
 
-> Ce protocole définit le degré d'intransigeance attendu de l'Agent `VERIFY` (Auditeur). Il représente la dernière barrière avant la sanctuarisation du code dans `Task_App2`.
+> Ce protocole définit le degré d'intransigeance attendu de l'Agent `VERIFY` (Auditeur). Il représente la dernière barrière avant la sanctuarisation du code dans l'historique qualifié.
 
 ## 1. OBJECTIF DE L'AUDIT
 L'audit n'est pas une simple relecture de syntaxe. Il valide trois piliers fondamentaux :
 1.  **Conformité Constitutionnelle** : Le code respecte-t-il la loi absolue du projet (`CONSTITUTION.md`) ?
-2.  **Intégrité de l'Existant** : Le code interfère-t-il de façon destructive avec l'historique validé (`Task_App2`) ?
+2.  **Intégrité de l'Existant** : Le code interfère-t-il de façon destructive avec l'historique validé ?
 3.  **Qualité Technique** : Le code est-il optimisé, sécurisé et prêt pour la production ?
 
 ## 2. GRILLE D'ÉVALUATION (CRITÈRES BLOQUANTS "REJET")
 L'Agent Auditeur DOIT rejeter **systématiquement** le code si l'un de ces critères est enfreint :
 * **Déviation Architecturale** : Le code utilise une dépendance, une base de données ou un framework non cité explicitement dans `CONSTITUTION.md`.
-* **Rupture de Contrat** : Une fonction modifie la signature d'une méthode existante de `.Task_App2` sans que la tâche de l'Analyste ne l'ait exigé.
+* **Rupture de Contrat** : Une fonction modifie la signature d'une méthode existante sans que la tâche de l'Analyste ne l'ait exigé.
 * **Faille de Sécurité ou Mauvaise Pratique** : L'authentification ou la validation des données est contournée (Ex: requête SQL brute si un ORM est imposé).
 * **Code Mort ou Incomplet** : Présence de commentaires du type `TODO`, `FIXME`, fonctions vides ou "Placeholders" bloquants.
 

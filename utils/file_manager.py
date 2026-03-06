@@ -76,7 +76,7 @@ class FileManager:
             return False
 
     def move_task_to_completed(self, task_filename: str, source_folder: str, target_folder: str) -> bool:
-        """Déplace un fichier (généralement de Task_App1 vers Task_App2)."""
+        """Déplace un fichier d'un dossier à un autre."""
         source = self.base_path / source_folder / task_filename
         target = self.base_path / target_folder / task_filename
 

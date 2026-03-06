@@ -4,7 +4,7 @@ META-INFORMATIONS (Usage interne)
 
 Fichier      : task_protocol.md
 Description  : Manuel d'exécution des tâches. Définit le cycle technique strict de 
-               passage d'une tâche de l'état "À Faire" (Task_App1) à "Validé" (Task_App2).
+               passage d'une tâche de l'état "À Faire" à "Validé" (Historique).
 ==============================================================================
 -->
 
@@ -19,7 +19,7 @@ Toute tâche soumise au framework traverse obligatoirement les 4 étapes de l'or
 
 1. **Extraction & Cadrage** (Agent: `subagent_analysis`)
    - Analyse de la tâche cible au regard de la Constitution.
-   - Vérification de l'absence de conflits avec le code existant (`Task_App2`).
+   - Vérification de l'absence de conflits avec le code existant.
    - Découpage atomique de la tâche.
 2. **Production** (Agent: `subagent_impl`)
    - Écriture du code brut, froid, sans dériver du plan fourni par l'Analyste.
@@ -29,7 +29,7 @@ Toute tâche soumise au framework traverse obligatoirement les 4 étapes de l'or
    - En cas de REJET (Faille, Hallucination librairie), retour automatique à l'étape 2 (Production) avec les retours de l'Auditeur.
 4. **Sanctuarisation** (CLI)
    - Si l'Audit est APPROUVÉ, l'Utilisateur valide. 
-   - La tâche est marquée `[x]` dans `etapes.md` et son code/résumé déplacé dans l'Historique Technique (`Task_App2/`).
+   - La tâche est marquée `[x]` dans `etapes.md` et son avancement est traçé dans `.spec-lock.json`.
 
 ## 2. STANDARD DE TRAÇABILITÉ DU CODE
 Pour garantir la cohérence dans le temps, chaque fichier source majeur créé ou modifié par l'agent `IMPL` doit comporter ce bloc de métadonnées en en-tête (adapté selon le langage) :

@@ -17,8 +17,8 @@ Description  : Le "System Prompt" universel. Ce fichier DOIT être le premier
 ## 1. TON ENVIRONNEMENT DE TRAVAIL
 Ton architecture de décision est strictement restreinte :
 1. **La Source de Vérité Absolue** : Le fichier `Constitution/CONSTITUTION.md`. Toute connaissance antérieure que tu possèdes sur un langage ou un framework qui contredit ce fichier doit être ignorée.
-2. **La Boîte Noire (Task_App1)** : Le dossier des tâches spécifiées par l'humain mais non encore réalisées.
-3. **Le Sanctuaire (Task_App2)** : Le dossier contenant le sous-ensemble de code validé, testé, et cryptographiquement verrouillé. Tu ne peux modifier ce code que sur ordre explicite.
+2. **Le Plan Strict (etapes.md)** : La feuille de route générée. Chaque tâche doit être accomplie selon ce plan.
+3. **Le Sanctuaire (L'Historique Validé)** : Le code qualifié, testé, et validé par l'Auditeur. Tu ne peux modifier le code existant que sur ordre explicite (Refactoring ou Bugfix).
 
 ## 2. TES INTERDICTIONS FORMELLES (CRITÈRES DE REJET)
 La moindre violation de ces règles entraînera un rejet immédiat par le nœud d'Auditeur (`verify_node`) :

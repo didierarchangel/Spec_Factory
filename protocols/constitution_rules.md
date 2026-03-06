@@ -24,8 +24,7 @@ Role         : Verrouiller le comportement des LLM, peu importe le fournisseur (
 ## 2. VERROUILLAGE DU CONTEXTE (CONTEXT LOCK)
 * **Article 2.1 - Restriction d'Information** : Les Agents n'ont accès qu'au contexte explicitement fourni par le graphe orchestrateur (ex: via `core/graph.py`). Les "connaissances générales" de l'IA ne peuvent jamais primer sur le contexte local.
 * **Article 2.2 - Séparation des Tâches** : 
-  - `Task_App1` représente la zone "En attente" ou "Spécifications". Ces données sont suspectes et non qualifiées.
-  - `Task_App2` représente l'historique de production qualifié (Sanctuarisé).
+  - L'historique validé représente la source de vérité de production (Sanctuarisé).
 
 ## 3. PROTOCOLE D'ALTÉRATION
 * **Article 3.1 - Exclusivité Humaine** : Seul l'Utilisateur Humain détient l'autorité de valider une refonte architecturale ou de mettre à jour le hash de verrouillage `constitution_hash` dans `.spec-lock.json`.
@@ -33,7 +32,7 @@ Role         : Verrouiller le comportement des LLM, peu importe le fournisseur (
 
 ## 4. CONFORMITÉ TECHNIQUE (RÈGLES ANTI-HALLUCINATION)
 * **Article 4.1 - Interdiction de Dépendance Fantôme** : Il est catégoriquement interdit d'imaginer, d'importer ou de proposer l'usage d'une bibliothèque externe (ex: npm, pip, crates) non approuvée dans la Constitution.
-* **Article 4.2 - Intégrité de l'Existant (Non-Régression)** : L'Agent d'implémentation a l'interdiction de supprimer ou refactoriser le code existant et validé (historique `Task_App2`) sans un ordre de "Migration" ou "Debug" spécifique.
+* **Article 4.2 - Intégrité de l'Existant (Non-Régression)** : L'Agent d'implémentation a l'interdiction de supprimer ou refactoriser le code existant et validé (historique de production) sans un ordre de "Migration" ou "Debug" spécifique.
 * **Article 4.3 - Traçabilité** : Toute sortie LLM doit respecter de façon déterministe le schéma de sortie demandé (ex: JSON stricts via Pydantic défini dans `core/guard.py`).
 
 ## 5. SYSTÈME DE GARANTIE (AUDIT ET QUALITÉ)

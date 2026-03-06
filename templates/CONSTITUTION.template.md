@@ -41,8 +41,8 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 ---
 
 ## 2. RÈGLES D'ARCHITECTURE (LE SANCTUAIRE)
-### 2.1 Sanctuarisation du Code (`Task_App2`)
-* Le dossier `Task_App2` (ou le dossier principal de votre code) représente l'**Historique Validé**.
+### 2.1 Sanctuarisation du Code
+* **Historique Validé** : L'état validé du code est le "Sanctuaire" du projet.
 * **Règle d'Or** : Un agent ne peut JAMAIS modifier ou refactoriser une fonction existante dans l'historique validé sans un ordre explicite de l'utilisateur ("Bugfix" ou "Refactor"). Le code généré doit toujours être "additif" ou "complémentaire" par défaut.
 
 ### 2.2 Structure des Fichiers

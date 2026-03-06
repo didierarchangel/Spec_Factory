@@ -22,7 +22,7 @@ Prends en compte les éléments suivants pour ton développement :
 
 2. STATUT D'AVANCEMENT :
 - Étape en cours : {current_step}
-- Historique technique (Task_App2) : {completed_tasks_summary}
+- Historique technique : {completed_tasks_summary}
 - Autres tâches en attente : {pending_tasks}
 
 3. PLAN DE L'ANALYSTE (RÉFÉRENCE ABSOLUE) :
@@ -35,7 +35,7 @@ Prends en compte les éléments suivants pour ton développement :
 Implémente la tâche suivante : "{target_task}"
 
 # RÈGLES D'OR (ZÉRO HALLUCINATION)
-- Règle 1 : Ne modifie JAMAIS le code existant relatif à l'historique validé (Task_App2) sans instruction explicite de l'Analyste.
+- Règle 1 : Ne modifie JAMAIS le code existant relatif à l'historique validé sans instruction explicite de l'Analyste.
 - Règle 2 : Interdiction formelle d'utiliser des bibliothèques, dépendances ou frameworks non mentionnés dans la Constitution.
 - Règle 3 : Sécurité avant tout. Si tu détectes que la tâche demandée crée une faille par rapport aux normes de la Constitution, signale-le.
 - Règle 4 : Modularité et Testabilité. Chaque fonction doit être prête à être testée.

@@ -54,13 +54,7 @@ def init(path, here):
     
     # Liste des dossiers à créer selon le protocole
     structure = [
-        "Constitution",
-        "Task_App1",      # Tâches non réalisées (Architecture)
-        "Task_App2",      # Tâches réalisées (Architecture)
-        "Task_Function1", # Spécifications non réalisées
-        "Task_Function2", # Spécifications réalisées
-        "Task1",          # Tâches techniques non réalisées
-        "Task2"           # Tâches techniques réalisées
+        "Constitution"
     ]
 
     click.echo(f"🏗️  Création de l'arborescence dans : {target_path.absolute()}")
@@ -165,7 +159,7 @@ Toute IA (Gemini, Claude, Copilot) opérant dans ce dossier DOIT :
 1. Consulter `Constitution/CONSTITUTION.md` avant toute action.
 2. Ne jamais modifier le code sans passer par le cycle : Analyse -> Implémentation -> Audit.
 3. Utiliser les commandes CLI `speckit` pour les phases de planification.
-4. Respecter strictement la segmentation des dossiers Task1/Task2 pour la traçabilité.
+4. Respecter strictement la traçabilité via `.spec-lock.json` et `etapes.md`.
 
 **L'IA de l'IDE ne doit pas tenter de tout générer en un bloc.**
 """
