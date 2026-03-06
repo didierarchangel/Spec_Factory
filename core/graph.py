@@ -131,6 +131,7 @@ class SpecGraphManager:
                 "target_task": state["target_task"],
                 "analysis_output": state["analysis_output"],
                 "feedback_correction": state.get("feedback_correction", ""),
+                "terminal_diagnostics": state.get("terminal_diagnostics", ""),
                 "format_instructions": parser.get_format_instructions()
             })
             logger.info("✅ Implémentation terminée.")
