@@ -18,6 +18,7 @@ uniquement l'implémenter de la manière la plus propre et sécurisée possible.
 Prends en compte les éléments suivants pour ton développement :
 
 1. CONSTITUTION DU PROJET :
+- Hash de référence : {constitution_hash}
 {constitution_content}
 
 2. STATUT D'AVANCEMENT :

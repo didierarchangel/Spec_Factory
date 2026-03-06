@@ -36,7 +36,7 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 
 ### 1.3 Outillage & Tests (Préférer des versions fixes)
 * **Linter/Formatter** : [Ex: ESLint, Prettier]
-* **Tests** : [Ex: Jest (^29.7.0), Vitest]
+* **Tests** : [Ex: Jest (^29.7.0), Vitest, Supertest (pour API)]
 
 ---
 

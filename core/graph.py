@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class AgentState(TypedDict):
     # Variables de contexte partagées (générées une seule fois)
+    constitution_hash: str
     constitution_content: str
     current_step: str
     completed_tasks_summary: str
@@ -150,6 +151,7 @@ class SpecGraphManager:
         
         try:
             raw_output = chain.invoke({
+                "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
@@ -190,6 +192,7 @@ class SpecGraphManager:
         
         try:
             raw_output = chain.invoke({
+                "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],

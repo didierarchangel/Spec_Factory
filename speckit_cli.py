@@ -411,6 +411,7 @@ def run(task, provider, model):
         graph_manager = SpecGraphManager(llm)
         
         initial_state = {
+            "constitution_hash": validator.calculate_hash(constitution_path),
             "constitution_content": constitution_content,
             "current_step": current_step,
             "completed_tasks_summary": "Historique chargé via .spec-lock.json",

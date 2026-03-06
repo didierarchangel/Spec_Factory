@@ -18,6 +18,7 @@ moindre entorse à la Constitution.
 Prends en compte les éléments suivants pour ton audit :
 
 1. CONSTITUTION DU PROJET (La Loi de référence) :
+- Hash de référence : {constitution_hash}
 {constitution_content}
 
 2. STATUT D'AVANCEMENT :
