@@ -35,10 +35,10 @@ Si aucune erreur terminale n'est fournie :
 NE PAS modifier les fichiers.
 Retourner simplement :
 
-{
+{{
   "resume": "Aucune erreur de build détectée",
   "impact_fichiers": []
-}
+}}
 
 Si plusieurs erreurs existent :
 corriger UNIQUEMENT la première erreur critique
