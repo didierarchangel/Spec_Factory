@@ -233,247 +233,82 @@ Règle 8 : INTERDICTION HORS CONSTITUTION
 N'utilise jamais de bibliothèque non listée
 dans la Constitution.
 
-Règle 9 : TYPESCRIPT BUILD
+Règle 9 : TYPESCRIPT ET CONFIGURATION (STRICT)
 
-Si une erreur concerne :
+Si la tâche implique `tsconfig.json`, tu dois respecter ces règles :
+1.  **Chemins Internes** : Les chemins *dans* le fichier (`include`, `rootDir`) sont relatifs à l'emplacement du `tsconfig.json`.
+    *   Exemple : `"include": ["src/**/*"]` (Correct car `src` est à côté du config).
+    *   Interdit : `"include": ["backend/src/**/*"]` (Mauvais car redondant).
+2.  **Globbing Global** : `"include": ["src/**/*"]` est OBLIGATOIRE. Interdiction de restreindre à `src*.spec.ts`.
 
-tsconfig.json  
-include  
-rootDir  
-outDir  
+Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 
-tu dois corriger tsconfig.json
-avant toute autre modification.
+1.  **Versions FIXES** : Interdiction d'utiliser `^` ou `~`.
+    *   Correct : `"express": "4.19.2"`
+    *   Interdit : `"express": "^4.19.2"`
+2.  **Scripts et DevDeps** : Tout outil utilisé dans `scripts` (ex: `tsc`, `jest`, `eslint`) DOIT être présent dans `devDependencies` avec une version fixe.
+3.  **Imports et Sync** : Si tu importes une lib, elle DOIT être dans `package.json`.
 
-⚠️ **ALERTE GLOBBING** : L'include de `tsconfig.json` doit TOUJOURS être :
-`"include": ["src/**/*"]`
-INTERDICTION FORMELLE d'utiliser des globs restrictifs comme `src*.spec.ts`.
-Toute la logique métier doit être compilée.
+Règle 13 : STACK BACKEND STANDARD (TS)
 
-RÈGLE 9.1 : VALIDATION DU TSCONFIG
+Si Backend Node/TS, tu dois inclure :
+- dependencies : `express`, `mongoose` (si Mongo), `jsonwebtoken` (si auth).
+- devDependencies : `typescript`, `@types/node`, `@types/express`, `tsc-watch`, `eslint`, `prettier`, `jest`, `ts-jest`, `supertest`.
 
-Si le projet utilise TypeScript, tu dois vérifier que
-tsconfig.json respecte les règles suivantes :
+# PHASE OBLIGATOIRE : VALIDATION AVANT SORTIE
 
-compilerOptions.rootDir = "./src"
-compilerOptions.outDir = "./dist"
+1.  **Arborescence** : Vérifie {file_tree}. Ne crée pas de fichiers en dehors de `backend/` ou `frontend/`.
+2.  **Diagnostics** : Analyse {terminal_diagnostics}. Si `TS18003`, corrige `include` en priorité.
+3.  **Command not found** : Si `tsc` ou `jest` manquant, ajoute-le à `devDependencies`.
 
-include DOIT être exactement :
+# CHECKLIST DE VÉRIFICATION
 
-"include": ["src/**/*"]
-
-Les valeurs suivantes sont interdites :
-
-"src*"
-"src/*.ts"
-"src/**.ts"
-
-Si une valeur incorrecte est détectée,
-tu dois corriger tsconfig.json immédiatement.
-
-La compilation TypeScript doit inclure
-tous les fichiers du dossier src.
-
-Règle 10 : TRAÇABILITÉ ABSOLUE
-
-Chaque fichier source (TS, JS, CSS, HTML, etc.) DOIT
-inclure l'en-tête de traçabilité @SPEC-KIT-TASK au tout début.
-
-Exemple :
-
-// @SPEC-KIT-TASK: 01_setup_project
-
-Règle 11 : INTÉGRITÉ JSON
-
-Les fichiers JSON doivent être du JSON valide.
-
-Aucun commentaire n'est autorisé.
-
-Exception :
-
-tsconfig.json peut contenir
-
-// @SPEC-KIT-TASK: 02_config_backend_typescript
-
-si l'étape correspond.
-
-Règle 12 : PRÉFIXE DE CHEMIN
-
-Si le projet contient :
-
-backend/
-frontend/
-
-Tu dois toujours utiliser ces préfixes.
-
-Exemple correct :
-
-// Fichier : backend/src/app.ts
-
-Exemple interdit :
-
-// Fichier : src/app.ts
-
-Règle 13 : SCRIPTS ET DEVDEPENDENCIES
-
-Tout outil utilisé dans un script doit être
-présent dans devDependencies.
-
-RÈGLE 13.1 : STACK MINIMALE TYPESCRIPT BACKEND
-
-Si le projet utilise TypeScript + Node.js,
-les dépendances suivantes doivent exister :
-
-dependencies :
-- express
-- mongoose (si base Mongo)
-- jsonwebtoken (si auth)
-
-devDependencies :
-- typescript
-- @types/node
-- @types/express
-- ts-node ou tsc-watch
-- eslint
-- prettier
-- jest
-- ts-jest
-- supertest
-
-Toutes les versions doivent être FIXES.
-
-Règle 14 : IMPORTS ET DÉPENDANCES
-
-Toute bibliothèque importée doit être
-présente dans package.json.
-
-Règle 15 : TRAÇABILITÉ DES FICHIERS
-
-Chaque fichier source doit commencer par
-l'en-tête officiel :
-
-@SPEC-KIT-TASK
-
-Les fichiers JSON sont exemptés.
-
-# PHASE OBLIGATOIRE : DEBUG DES ERREURS TERMINAL
-
-Avant d'écrire du code :
-
-1. Analyse les erreurs dans {terminal_diagnostics}
-2. Identifie la cause probable
-3. Vérifie :
-
-- fichiers manquants
-- mauvais chemins
-- dépendances manquantes
-- configuration TypeScript incorrecte
-
-Si l'erreur est :
-
-TS18003
-
-cela signifie que TypeScript ne trouve
-aucun fichier source.
-
-Dans ce cas tu dois vérifier :
-
-- que backend/src existe
-- que tsconfig.json contient :
-
-"include": ["src/**/*"]
-
-- que les fichiers .ts sont bien dans src/
-
-CAS SPÉCIAL : ERREUR "command not found"
-
-Si le terminal indique :
-
-tsc not found
-jest not found
-eslint not found
-
-Cela signifie que la dépendance correspondante
-n'est pas installée.
-
-Tu dois :
-
-1. Ajouter la dépendance dans devDependencies
-2. Utiliser une version fixe
-3. Corriger package.json
-
-
-PHASE OBLIGATOIRE : VALIDATION PACKAGE.JSON
-
-Avant de livrer ton code :
-
-1. Vérifie que package.json existe
-2. Vérifie que toutes les dépendances importées sont présentes
-3. Vérifie que chaque script utilise un outil installé
-4. Vérifie que toutes les versions sont fixes
-5. Vérifie que "build": "tsc" existe
-6. Vérifie que typescript est dans devDependencies
-
-Si une incohérence est détectée,
-tu dois corriger package.json avant toute autre modification.
-
-# CHECKLIST DE VÉRIFICATION OBLIGATOIRE
-
-Avant de livrer ton code :
-
-1. [ ] Toutes les libs importées sont dans package.json
-2. [ ] Toutes les versions sont FIXES
-3. [ ] Tous les fichiers ont l'en-tête @SPEC-KIT-TASK
-4. [ ] Le script build est "build": "tsc"
-5. [ ] Les variables d'environnement sont vérifiées
-6. [ ] Les JSON sont valides
-7. [ ] typescript est présent dans devDependencies
-8. [ ] tous les outils de scripts sont installés
-9. [ ] package.json est cohérent avec les imports
+- [ ] Préfixe `backend/` ou `frontend/` présent sur chaque marqueur de fichier.
+- [ ] En-tête `@SPEC-KIT-TASK` présent dans chaque fichier source.
+- [ ] `package.json` : TOUTES les versions sont FIXES (pas de `^`).
+- [ ] `tsconfig.json` : `include` est `["src/**/*"]`.
+- [ ] `build` script est `"build": "tsc"`.
 
 # INSTRUCTIONS DE SORTIE
 
 Tu dois répondre en DEUX parties.
 
 PARTIE 1 : JSON D'ANALYSE
-
 ```json
 {{
   "resume": "Brève description des changements",
-  "impact_fichiers": ["src/app.ts", "package.json"]
+  "impact_fichiers": ["backend/src/app.ts", "backend/package.json"]
 }}
 ```
 
 **PARTIE 2 : LE CODE GÉNÉRÉ (HORS DU JSON)**
-⚠️ **RÈGLE CRITIQUE** : Le code doit être dans un bloc :
+⚠️ **RÈGLE CRITIQUE** : Le code doit être dans un bloc markdown ` ```code ... ``` `.
+Chaque fichier doit être marqué par : `// Fichier : chemin/complet/depuis/racine`
 
-// Fichier : chemin/vers/fichier
-contenu
-
-Ne mets jamais de code dans le JSON.
-
-EXEMPLE
+EXEMPLE :
 ```json
 {{
-  "resume": "Création du serveur initial",
-  "impact_fichiers": ["src/app.ts"]
+  "resume": "Initialisation du serveur backend",
+  "impact_fichiers": ["backend/src/app.ts", "backend/package.json"]
 }}
 ```
 
 ```code
-// Fichier : src/app.ts
-console.log("Hello World");
+// Fichier : backend/package.json
+{{
+  "name": "backend",
+  "version": "1.0.0",
+  "dependencies": {{
+    "express": "4.19.2"
+  }}
+}}
+
+// Fichier : backend/src/app.ts
+// @SPEC-KIT-TASK: 01_setup
+import express from 'express';
+const app = express();
+export {{ app }};
 ```
 
 RÈGLE 16 : SCRIPT BUILD STANDARD
-
-Le script build doit toujours être :
-
-"build": "tsc"
-
-Interdiction d'utiliser un autre outil
-pour la compilation TypeScript.
-
-Le build doit produire les fichiers dans :
-
-dist/
+Le script build doit toujours être : `"build": "tsc"`. Production dans `dist/`.
