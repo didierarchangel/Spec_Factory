@@ -205,6 +205,29 @@ Jamais :
 
 ^4.19.2
 
+RÈGLE 7.1 : COHÉRENCE SCRIPTS / DÉPENDANCES
+
+Chaque commande utilisée dans "scripts" doit correspondre
+à un outil installé dans devDependencies.
+
+Exemples obligatoires :
+
+tsc → typescript
+jest → jest
+eslint → eslint
+tsc-watch → tsc-watch
+
+Si un script utilise un outil absent du package.json,
+tu DOIS ajouter cette dépendance dans devDependencies
+avec une version fixe.
+
+Exemple :
+
+"devDependencies": {
+  "typescript": "5.4.5",
+  "tsc-watch": "6.0.0"
+}
+
 Règle 8 : INTERDICTION HORS CONSTITUTION
 
 N'utilise jamais de bibliothèque non listée
@@ -226,6 +249,30 @@ avant toute autre modification.
 `"include": ["src/**/*"]`
 INTERDICTION FORMELLE d'utiliser des globs restrictifs comme `src*.spec.ts`.
 Toute la logique métier doit être compilée.
+
+RÈGLE 9.1 : VALIDATION DU TSCONFIG
+
+Si le projet utilise TypeScript, tu dois vérifier que
+tsconfig.json respecte les règles suivantes :
+
+compilerOptions.rootDir = "./src"
+compilerOptions.outDir = "./dist"
+
+include DOIT être exactement :
+
+"include": ["src/**/*"]
+
+Les valeurs suivantes sont interdites :
+
+"src*"
+"src/*.ts"
+"src/**.ts"
+
+Si une valeur incorrecte est détectée,
+tu dois corriger tsconfig.json immédiatement.
+
+La compilation TypeScript doit inclure
+tous les fichiers du dossier src.
 
 Règle 10 : TRAÇABILITÉ ABSOLUE
 
@@ -272,6 +319,29 @@ Règle 13 : SCRIPTS ET DEVDEPENDENCIES
 Tout outil utilisé dans un script doit être
 présent dans devDependencies.
 
+RÈGLE 13.1 : STACK MINIMALE TYPESCRIPT BACKEND
+
+Si le projet utilise TypeScript + Node.js,
+les dépendances suivantes doivent exister :
+
+dependencies :
+- express
+- mongoose (si base Mongo)
+- jsonwebtoken (si auth)
+
+devDependencies :
+- typescript
+- @types/node
+- @types/express
+- ts-node ou tsc-watch
+- eslint
+- prettier
+- jest
+- ts-jest
+- supertest
+
+Toutes les versions doivent être FIXES.
+
 Règle 14 : IMPORTS ET DÉPENDANCES
 
 Toute bibliothèque importée doit être
@@ -315,6 +385,38 @@ Dans ce cas tu dois vérifier :
 
 - que les fichiers .ts sont bien dans src/
 
+CAS SPÉCIAL : ERREUR "command not found"
+
+Si le terminal indique :
+
+tsc not found
+jest not found
+eslint not found
+
+Cela signifie que la dépendance correspondante
+n'est pas installée.
+
+Tu dois :
+
+1. Ajouter la dépendance dans devDependencies
+2. Utiliser une version fixe
+3. Corriger package.json
+
+
+PHASE OBLIGATOIRE : VALIDATION PACKAGE.JSON
+
+Avant de livrer ton code :
+
+1. Vérifie que package.json existe
+2. Vérifie que toutes les dépendances importées sont présentes
+3. Vérifie que chaque script utilise un outil installé
+4. Vérifie que toutes les versions sont fixes
+5. Vérifie que "build": "tsc" existe
+6. Vérifie que typescript est dans devDependencies
+
+Si une incohérence est détectée,
+tu dois corriger package.json avant toute autre modification.
+
 # CHECKLIST DE VÉRIFICATION OBLIGATOIRE
 
 Avant de livrer ton code :
@@ -325,6 +427,9 @@ Avant de livrer ton code :
 4. [ ] Le script build est "build": "tsc"
 5. [ ] Les variables d'environnement sont vérifiées
 6. [ ] Les JSON sont valides
+7. [ ] typescript est présent dans devDependencies
+8. [ ] tous les outils de scripts sont installés
+9. [ ] package.json est cohérent avec les imports
 
 # INSTRUCTIONS DE SORTIE
 
@@ -359,3 +464,16 @@ EXEMPLE
 // Fichier : src/app.ts
 console.log("Hello World");
 ```
+
+RÈGLE 16 : SCRIPT BUILD STANDARD
+
+Le script build doit toujours être :
+
+"build": "tsc"
+
+Interdiction d'utiliser un autre outil
+pour la compilation TypeScript.
+
+Le build doit produire les fichiers dans :
+
+dist/
