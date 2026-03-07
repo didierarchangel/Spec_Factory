@@ -45,6 +45,7 @@ class ConstitutionManager:
             2. La Stack Technique (Langages, Frameworks, DB) - RESPECTE STRICTEMENT LES PRÉFÉRENCES SUIVANTES :
                - STACK IMPOSÉE : {stack_info}
                - Note : Si React ou Next.js sont choisis, ils DOIVENT impérativement utiliser Vite.
+               - Note : Si Node.js et TypeScript sont choisis pour le Backend, tu DOIS impérativement préciser la configuration : `Node.js 20, TypeScript (Configuration : CommonJS, Target: ES2022)`. Cela empêchera l'Auditeur d'exiger des ES Modules.
             3. Les Standards de Code (Naming, Security).
             4. Le Schéma de Données (si applicable).
             5. L'Outillage et les Tests : Tu DOIS impérativement inclure Jest, Supertest (Backend) et Vitest (Frontend si Vite). Ne les oublie pas !

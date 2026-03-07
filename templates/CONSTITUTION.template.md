@@ -23,7 +23,7 @@ Description  : Le modèle de base pour toute nouvelle Constitution.
 Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer des bibliothèques non listées ici.
 
 ### 1.1 Backend
-* **Langage** : [Ex: Node.js 20, TypeScript]
+* **Langage** : [Ex: Node.js 20, TypeScript (Configuration : CommonJS, Target: ES2022)]
 * **Framework Core** : [Ex: Express, NestJS, Fastify]
 * **Base de données** : [Ex: MongoDB via Mongoose, PostgreSQL 16 via Prisma]
 * **Authentification** : [Ex: JWT, Passport.js, NextAuth]
