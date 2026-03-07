@@ -48,6 +48,7 @@ class AgentState(TypedDict):
     
     # Carte sémantique du code (Semantic Code Map)
     code_map: str
+    file_tree: str
 
 
 class SpecGraphManager:
@@ -254,6 +255,7 @@ class SpecGraphManager:
                 "feedback_correction": state.get("feedback_correction", ""),
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
                 "code_map": state.get("code_map", "Non générée"),
+                "file_tree": state.get("file_tree", "Non générée"),
                 "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
@@ -350,15 +352,15 @@ class SpecGraphManager:
         import re
         import json
         
-        code_map = {{
+        code_map = {
             "file_tree": [],
             "semantics": {}
-        }}
+        }
         
         # Extensions à scanner pour la sémantique
         source_extensions = ('.ts', '.js', '.tsx', '.jsx')
         # Dossiers à ignorer
-        ignore_dirs = {{'node_modules', 'dist', '.git', '__pycache__', '.speckit-rules'}}
+        ignore_dirs = {'node_modules', 'dist', '.git', '__pycache__', '.speckit-rules'}
         
         for root, dirs, files in os.walk(str(self.root)):
             # Filtrage des dossiers
@@ -375,7 +377,7 @@ class SpecGraphManager:
                             
                             # Extraction simplifiée des imports
                             # Match : import ... from 'lib' ou import * as ... from 'lib' ou import 'lib'
-                            imports = re.findall(r"import\s+(?:(?:\*|[\w\s,{{}}]+)\s+from\s+)?['\"]([^'\"]+)['\"]", content)
+                            imports = re.findall(r"import\s+(?:(?:\*|[\w\s,{}]+)\s+from\s+)?['\"]([^'\"]+)['\"]", content)
                             
                             # Extraction simplifiée des exports
                             # Match : export const ..., export function ..., export class ..., export default ...
@@ -390,19 +392,24 @@ class SpecGraphManager:
                             # Filtrage des doublons et mots clés JS dans les extractions
                             functions = list(set([fn for fn in functions if fn not in ('if', 'for', 'while', 'switch', 'catch', 'constructor')]))
                             
-                            code_map["semantics"][rel_path] = {{
+                            code_map["semantics"][rel_path] = {
                                 "imports": list(set(imports)),
                                 "exports": list(set(exports)),
                                 "functions": functions[:15] # Limite pour rester compact
-                            }}
+                            }
                     except Exception as e:
                         logger.warning(f"⚠️ Impossible de parser {rel_path} pour la Code Map : {str(e)}")
         
         # Formatage compact en JSON string
-        code_map_str = json.dumps(code_map, indent=2)
+        code_map_str = json.dumps(code_map["semantics"], indent=2)
+        file_tree_str = "\n".join(code_map["file_tree"])
+        
         logger.info(f"✅ Code Map générée ({len(code_map['file_tree'])} fichiers référencés).")
         
-        return {{"code_map": code_map_str}}
+        return {
+            "code_map": code_map_str,
+            "file_tree": file_tree_str
+        }
 
     def buildfix_node(self, state: AgentState) -> dict:
         """Nœud de réparation automatique du build (TypeScript/Node)."""
@@ -422,13 +429,14 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            raw_output = chain.invoke({{
+            raw_output = chain.invoke({
                 "code_map": state.get("code_map", "Non générée"),
+                "file_tree": state.get("file_tree", "Non générée"),
                 "code_to_verify": state["code_to_verify"],
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
                 "constitution_content": state["constitution_content"],
                 "format_instructions": parser.get_format_instructions()
-            }})
+            })
             result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
             logger.info("✅ Réparation du build terminée.")
             

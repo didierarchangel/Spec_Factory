@@ -17,10 +17,13 @@ Les erreurs du terminal sont ta vérité absolue. Tu es un expert en infrastruct
 2. ERREURS TERMINAL (VÉRITÉ ABSOLUE) :
 {terminal_diagnostics}
 
-3. SEMANTIC CODE MAP (STRUCTURE RÉELLE DU PROJET) :
+3. FILE TREE (STRUCTURE RÉELLE DU PROJET) :
+{file_tree}
+
+4. SEMANTIC CODE MAP (STRUCTURE SÉMANTIQUE DU CODE) :
 {code_map}
 
-4. CONSTITUTION DU PROJET :
+5. CONSTITUTION DU PROJET :
 {constitution_content}
 
 # MISSION DE RÉPARATION

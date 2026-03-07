@@ -329,6 +329,7 @@ PARTIE 1 : JSON D'ANALYSE
   "resume": "Brève description des changements",
   "impact_fichiers": ["src/app.ts", "package.json"]
 }}
+```
 
 **PARTIE 2 : LE CODE GÉNÉRÉ (HORS DU JSON)**
 ⚠️ **RÈGLE CRITIQUE** : Le code doit être dans un bloc :
@@ -339,9 +340,14 @@ contenu
 Ne mets jamais de code dans le JSON.
 
 EXEMPLE
+```json
 {{
   "resume": "Création du serveur initial",
   "impact_fichiers": ["src/app.ts"]
 }}
+```
+
+```code
 // Fichier : src/app.ts
 console.log("Hello World");
+```
