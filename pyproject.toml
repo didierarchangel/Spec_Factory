@@ -19,14 +19,15 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["core", "utils", "agents", "protocols", "templates"]
+packages = ["core", "utils", "agents", "protocols"]
 py-modules = ["speckit_cli"]
 include-package-data = true
 
 [tool.setuptools.package-data]
 agents = ["*.prompt"]
 protocols = ["*.md"]
-templates = ["*.md"]
+core = ["templates/*.json"]
+
 
 [project.scripts]
 speckit = "speckit_cli:cli"
