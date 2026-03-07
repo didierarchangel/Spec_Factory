@@ -76,16 +76,14 @@ class SpecGraphManager:
         
         # --- EXTRACTION DU CODE MARKDOWN (NOUVEAU FORMAT) ---
         import re
-        code_block_match = re.search(r"```code\s*(.*?)\s*```", cleaned, re.DOTALL)
-        if code_block_match:
-            result["code"] = code_block_match.group(1).strip()
+        code_blocks = re.findall(r"```code\s*(.*?)\s*```", cleaned, re.DOTALL)
+        if code_blocks:
+            result["code"] = "\n\n".join([b.strip() for b in code_blocks])
         else:
-            # Fallback si le LLM n'utilise pas la balise ```code``` exacte
-            code_block_match = re.search(r"```(?!(?:json|markdown))\w*\s*(?:// Fichier|# Fichier|/\* Fichier)(.*?)\s*```", cleaned, re.DOTALL)
-            if code_block_match:
-                # On remet le marqueur de fichier qu'on a matché
-                first_line = re.search(r"(?:// Fichier|# Fichier|/\* Fichier)", cleaned).group(0)
-                result["code"] = first_line + code_block_match.group(1)
+            # Fallback si le LLM n'utilise pas la balise ```code``` exacte (on cherche les blocs non-json/non-md avec marqueurs)
+            code_blocks = re.findall(r"```(?!(?:json|markdown|markdown))\w*\s*((?:// Fichier|# Fichier|/\* Fichier).*?)\s*```", cleaned, re.DOTALL)
+            if code_blocks:
+                result["code"] = "\n\n".join([b.strip() for b in code_blocks])
             else:
                 result["code"] = ""
                 
@@ -528,9 +526,9 @@ class SpecGraphManager:
 
                 # 3. Vérification de compilation TypeScript (tsc --noEmit)
                 logger.info(f"🔍 Compilation TypeScript (--noEmit) dans {dir_name}...")
-                # On utilise npx pour être sûr de trouver tsc même s'il n'est pas global
+                # On utilise npx --yes pour éviter de bloquer sur une demande de confirmation d'installation
                 try:
-                    res_tsc = subprocess.run("npx tsc --noEmit", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
+                    res_tsc = subprocess.run("npx --yes tsc --noEmit", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
                     if res_tsc.returncode != 0:
                         diagnostics.append(f"❌ ÉCHEC de [tsc --noEmit] dans {dir_name} :\nSTDOUT: {res_tsc.stdout}\nSTDERR: {res_tsc.stderr}")
                     else:
