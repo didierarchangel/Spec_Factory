@@ -94,8 +94,8 @@ CONFIGURATION TYPESCRIPT CANONIQUE
 
 Le tsconfig.json doit être exactement :
 
-{
-  "compilerOptions": {
+{{
+  "compilerOptions": {{
     "target": "ES2022",
     "module": "CommonJS",
     "rootDir": "./src",
@@ -104,10 +104,10 @@ Le tsconfig.json doit être exactement :
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
-  },
+  }},
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]
-}
+}}
 
 INTERDICTION d'utiliser :
 

@@ -277,8 +277,8 @@ tu dois utiliser EXACTEMENT cette configuration.
 
 Aucune autre option n'est autorisée.
 
-{
-  "compilerOptions": {
+{{
+  "compilerOptions": {{
     "target": "ES2022",
     "module": "CommonJS",
     "rootDir": "./src",
@@ -287,10 +287,10 @@ Aucune autre option n'est autorisée.
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
-  },
+  }},
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "tests"]
-}
+}}
 
 # INTERDICTION d'utiliser :
 - baseUrl
