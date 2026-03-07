@@ -63,13 +63,22 @@ class FileManager:
 
         # Golden Template Override for tsconfig.json
         if "tsconfig.json" in str(file_path).lower():
+            # 1. Check local project root
             example_path = self.base_path / "tsconfig.json.example"
+            
+            # 2. Check factory root (fallback)
+            if not example_path.exists():
+                factory_root = Path(__file__).parent.parent
+                example_path = factory_root / "tsconfig.json.example"
+
             if example_path.exists():
-                logger.info(f"✨ Golden Template: Overwriting {relative_path} with contents of tsconfig.json.example")
+                logger.info(f"✨ Golden Template: Overwriting {relative_path} with contents of {example_path}")
                 try:
                     content = example_path.read_text(encoding="utf-8")
                 except Exception as e:
                     logger.error(f"❌ Erreur lors de la lecture du Golden Template : {e}")
+            else:
+                logger.warning(f"⚠️ Aucun Golden Template trouvé pour {relative_path} (cherché dans le projet et la Factory)")
 
         try:
             # Sécurité supplémentaire : si un dossier existe avec ce nom de fichier, on bloque
