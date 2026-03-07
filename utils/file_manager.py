@@ -61,6 +61,16 @@ class FileManager:
             logger.error(f"🛑 Tentative d'écriture sur un dossier comme si c'était un fichier : {relative_path}")
             return False
 
+        # Golden Template Override for tsconfig.json
+        if "tsconfig.json" in str(file_path).lower():
+            example_path = self.base_path / "tsconfig.json.example"
+            if example_path.exists():
+                logger.info(f"✨ Golden Template: Overwriting {relative_path} with contents of tsconfig.json.example")
+                try:
+                    content = example_path.read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.error(f"❌ Erreur lors de la lecture du Golden Template : {e}")
+
         try:
             # Sécurité supplémentaire : si un dossier existe avec ce nom de fichier, on bloque
             if file_path.exists() and file_path.is_dir():

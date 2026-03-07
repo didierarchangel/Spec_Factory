@@ -23,7 +23,7 @@ class EtapeManager:
         self.history_path = self.root / "Constitution" / "EtapesAdd.md"
 
     def generate_steps_from_constitution(self) -> str:
-        """Analyse la Constitution pour définir les étapes du projet."""
+        """Analyse la Constitution pour définir les étapes du projet avec des sous-tâches détaillées."""
         if not self.constitution_path.exists():
             raise FileNotFoundError(
                 f"CONSTITUTION.md introuvable : {self.constitution_path}"
@@ -32,11 +32,19 @@ class EtapeManager:
         constitution_content = self.constitution_path.read_text(encoding="utf-8")
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es un chef de projet DevOps. Basé sur la CONSTITUTION fournie,
-            découpe le projet en étapes techniques numérotées (ex: 01, 02, 03).
-            Format de sortie :
-            ## [ ] 01_nom_etape : Description courte
-            ## [ ] 02_nom_etape : Description courte"""),
+            ("system", """Tu es un chef de projet DevOps expert. Basé sur la CONSTITUTION fournie,
+            découpe le projet en étapes techniques majeures (ex: 01, 02, 03).
+            Chaque étape doit contenir une liste de sous-tâches atomiques et actionnables.
+            
+            Format de sortie STRICT :
+            ## [ ] 01_nom_etape : Titre de l'étape
+            - [ ] Sous-tâche 1 (ex: Créer le dossier src)
+            - [ ] Sous-tâche 2 (ex: Configurer tsconfig.json)
+            
+            ## [ ] 02_nom_etape : Titre de l'étape
+            - [ ] Sous-tâche 1
+            
+            IMPORTANT : Les IDs d'étape (01_nom_etape) doivent être courts, sans espaces, et utiliser des underscores."""),
             ("user", "{content}")
         ])
 
@@ -45,10 +53,11 @@ class EtapeManager:
 
         self.etapes_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.etapes_path, "w", encoding="utf-8") as f:
-            f.write("# FEUILLE DE ROUTE DU PROJET (etapes.md)\n\n")
+            f.write("# ÉTAPES DU PROJET (etapes.md)\n\n")
+            f.write("Ce fichier documente la progression détaillée du projet.\n\n")
             f.write(steps)
 
-        logger.info("Fichier etapes.md généré avec succès.")
+        logger.info("Fichier etapes.md généré avec succès avec un format granulaire.")
         return steps
 
     def get_next_pending_step(self) -> str | None:
@@ -71,8 +80,10 @@ class EtapeManager:
 
         steps = []
         content = self.etapes_path.read_text(encoding="utf-8")
-        for line in content.splitlines():
-            # Étape complétée : ## [x] 01_setup : Description
+        lines = content.splitlines()
+        
+        for i, line in enumerate(lines):
+            # Étape majeure : ## [x] 01_setup : Description
             match_done = re.search(r"## \[x\] (\w+)\s*:\s*(.*)", line)
             if match_done:
                 steps.append({
@@ -82,7 +93,7 @@ class EtapeManager:
                 })
                 continue
 
-            # Étape en attente : ## [ ] 02_api : Description
+            # Étape majeure : ## [ ] 02_api : Description
             match_pending = re.search(r"## \[ \] (\w+)\s*:\s*(.*)", line)
             if match_pending:
                 steps.append({
@@ -90,7 +101,6 @@ class EtapeManager:
                     "description": match_pending.group(2).strip(),
                     "status": "pending",
                 })
-
         return steps
 
     def get_progress(self) -> dict:
@@ -109,33 +119,44 @@ class EtapeManager:
         }
 
     def mark_step_as_completed(self, step_id: str, synthesis: str = None) -> bool:
-        """Passe une étape de [ ] à [x] une fois validée.
-        
-        Si une synthèse est fournie, elle est ajoutée au fichier EtapesAdd.md.
-        Retourne True si l'étape a été trouvée et marquée, False sinon.
-        """
+        """Passe une étape majeure et toutes ses sous-tâches de [ ] à [x]."""
         if not self.etapes_path.exists():
-            raise FileNotFoundError(
-                f"etapes.md introuvable : {self.etapes_path}"
-            )
+            raise FileNotFoundError(f"etapes.md introuvable : {self.etapes_path}")
 
-        content = self.etapes_path.read_text(encoding="utf-8")
-        target = f"## [ ] {step_id}"
+        lines = self.etapes_path.read_text(encoding="utf-8").splitlines()
+        updated_lines = []
+        inside_target_step = False
+        found = False
 
-        if target not in content:
-            # Fallback : vérifier si déjà complétée
-            if f"## [x] {step_id}" in content:
+        for line in lines:
+            # Si on trouve le header de l'étape cible
+            if f"## [ ] {step_id}" in line:
+                updated_lines.append(line.replace(f"## [ ] {step_id}", f"## [x] {step_id}"))
+                inside_target_step = True
+                found = True
+                continue
+            
+            # Si on rentre dans une AUTRE étape majeure, on arrête de cocher les sous-tâches
+            if line.startswith("## ") and inside_target_step:
+                inside_target_step = False
+            
+            # Si on est dans l'étape cible, on coche toutes les sous-tâches
+            if inside_target_step and line.strip().startswith("- [ ]"):
+                updated_lines.append(line.replace("- [ ]", "- [x]"))
+            else:
+                updated_lines.append(line)
+
+        if not found:
+            # Vérifier si déjà complétée
+            if f"## [x] {step_id}" in self.etapes_path.read_text(encoding="utf-8"):
                 logger.info("Étape '%s' déjà marquée comme terminée.", step_id)
-                # On ajoute quand même à l'historique si demandé
-                if synthesis:
-                    self.add_step_to_history(step_id, synthesis)
+                if synthesis: self.add_step_to_history(step_id, synthesis)
                 return True
             logger.warning("Étape '%s' non trouvée.", step_id)
             return False
 
-        updated_content = content.replace(target, f"## [x] {step_id}")
-        self.etapes_path.write_text(updated_content, encoding="utf-8")
-        logger.info("Étape '%s' marquée comme terminée dans etapes.md.", step_id)
+        self.etapes_path.write_text("\n".join(updated_lines), encoding="utf-8")
+        logger.info("Étape '%s' et ses sous-tâches marquées comme terminées.", step_id)
 
         if synthesis:
             self.add_step_to_history(step_id, synthesis)

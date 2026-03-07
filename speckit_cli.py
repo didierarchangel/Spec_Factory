@@ -183,6 +183,14 @@ build/
         gitignore_path.write_text(gitignore_content, encoding="utf-8")
         click.echo("✅ Fichier `.gitignore` par défaut créé.")
 
+    # Injection du tsconfig.json.example (Golden Template)
+    factory_root = Path(__file__).parent
+    tsconfig_example_source = factory_root / "tsconfig.json.example"
+    if tsconfig_example_source.exists():
+        tsconfig_example_dest = target_path / "tsconfig.json.example"
+        shutil.copy(str(tsconfig_example_source), str(tsconfig_example_dest))
+        click.echo("✅ Template `tsconfig.json.example` injecté à la racine.")
+
     click.echo(f"✅ IA configurées : {', '.join(selected_providers)}")
     click.echo("✅ PROJET INITIALISÉ. Fichier de gouvernance `.speckit-rules` créé.")
     click.echo("💡 Fichiers `.env.example` et `.env` créés. N'oubliez pas d'ajouter vos vraies clés API dans `.env`.")
