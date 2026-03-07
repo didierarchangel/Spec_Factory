@@ -66,7 +66,8 @@ Tu dois corriger UNIQUEMENT ce qui empêche le build de réussir :
 - Si une erreur vient du tsconfig, tu dois ADAPTER le code source ou le package.json pour qu'ils soient compatibles avec la configuration imposée, mais ne touche pas au fichier tsconfig lui-même.
 
 # PERMISSION
-- Seul le fichier `package.json` peut être reconstruit entièrement.
+- Le fichier `tsconfig.json` peut être modifié UNIQUEMENT pour résoudre une erreur de build critique (ex: TS18003). 
+- Tu dois conserver les options `target: ES2022` et `module: CommonJS` du Golden Template sauf si l'erreur terminale indique explicitement une incompatibilité.
 
 # CAS PARTICULIER : TS18003
 Si une erreur mentionne `TS18003`, cela signifie que TypeScript ne trouve pas les fichiers source.
