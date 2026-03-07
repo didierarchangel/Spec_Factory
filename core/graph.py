@@ -122,13 +122,14 @@ class SpecGraphManager:
             # 3. Fallback : Extraction manuelle par Regex si LangChain échoue
             try:
                 # Extraction du champ "resume" ou "verdict_final"
-                resume_match = re.search(r'"(?:resume|verdict_final)"\s*:\s*"([^"]+)"', json_content)
+                resume_match = re.search(r'"(?:resume|verdict_final)"\s*:\s*"((?:\\.|[^"\\])*)"', json_content, re.DOTALL)
                 if resume_match:
-                    result["resume"] = resume_match.group(1)
-                    result["verdict_final"] = resume_match.group(1)
+                    val = resume_match.group(1).replace('\\"', '"').replace('\\n', '\n')
+                    result["resume"] = val
+                    result["verdict_final"] = val
                 else:
-                    result["resume"] = ""
-                    result["verdict_final"] = ""
+                    result["resume"] = "Correction effectuée (sans description)"
+                    result["verdict_final"] = "REJETÉ"
 
                 # Extraction du score
                 score_match = re.search(r'"score_conformite"\s*:\s*"([^"]+)"', json_content)
@@ -455,7 +456,7 @@ class SpecGraphManager:
                 "code_to_verify": merged_code,
                 "impact_fichiers": list(set(state.get("impact_fichiers", []) + result.get("impact_fichiers", []))),
                 "error_count": new_error_count,
-                "feedback_correction": f"BUILD FIX APPLIED (Attempt {new_error_count}): {result['resume']}"
+                "feedback_correction": f"BUILD FIX APPLIED (Attempt {new_error_count}): {result.get('resume', 'Aucun résumé')}"
             }
         except Exception as e:
             logger.warning(f"⚠️ Échec du BuildFixer : {str(e)}")

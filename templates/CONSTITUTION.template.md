@@ -72,13 +72,13 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 
 ---
 
-## 5. CONFIGURATIONS IMMUTABLES (SYSTÈME)
-Les fichiers suivants sont gérés par Speckit.Factory via des **Golden Templates**.
-**Interdiction absolue** pour les agents de les créer ou de les modifier manuellement :
+## 5. CONFIGURATIONS SYSTÈME (GOLDEN TEMPLATES)
+Les fichiers suivants sont gérés par Speckit.Factory. 
+Les agents doivent les inclure lors de l'initialisation pour respecter la structure du projet, mais **ne doivent jamais** modifier les options fondamentales (`rootDir`, `outDir`, `include`, `target`) :
 1.  `backend/tsconfig.json`
 2.  `frontend/tsconfig.json`
 
-Si une erreur de build survient, l'agent doit adapter le code source ou le `package.json` pour qu'ils respectent la configuration imposée, mais ne doit jamais toucher aux fichiers `tsconfig.json`.
+Le système écrasera automatiquement tout changement non autorisé sur ces fichiers via les Golden Templates locaux. En cas de conflit, l'agent doit adapter son code source pour qu'il soit compatible avec ces fichiers.
 
 ---
 

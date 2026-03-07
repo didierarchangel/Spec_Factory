@@ -121,50 +121,66 @@ def init(path, here):
     click.echo("\n--- Frontend ---")
     for k, v in frontend_choices.items(): click.echo(f" {k}) {v}")
     f_choice = click.prompt("Votre choix de Frontend", default="1", type=click.Choice(list(frontend_choices.keys())))
-    selected_frontend = frontend_choices[f_choice]
-    
+    selected_frontend = frontend_choices[f_choice]    # Création de l'arborescence de base
+    if selected_backend != "Aucun":
+        (target_path / "backend" / "src").mkdir(parents=True, exist_ok=True)
+    if selected_frontend != "Aucun (API Pure)":
+        (target_path / "frontend" / "src").mkdir(parents=True, exist_ok=True)
+
     # Préparation des templates locaux (.speckit/templates)
     templates_dir = target_path / ".speckit" / "templates"
     templates_dir.mkdir(parents=True, exist_ok=True)
     
+    # factory_root : on cherche templates/tsconfigs là où est le script
     factory_root = Path(__file__).parent
     
     # 1. Injection du Backend Template
     backend_ts_map = {
         "Node.js (Express)": "tsconfig.backend.node.json",
-        "Node.js (NestJS)": "tsconfig.backend.node.json"
+        "Node.js (NestJS)": "tsconfig.backend.node.json",
+        "Python (FastAPI)": None,
+        "Python (Flask)": None
     }
     
-    if selected_backend in backend_ts_map:
-        source = factory_root / "templates" / "tsconfigs" / backend_ts_map[selected_backend]
+    selected_backend_name = selected_backend
+    if selected_backend_name in backend_ts_map and backend_ts_map[selected_backend_name]:
+        source = factory_root / "templates" / "tsconfigs" / backend_ts_map[selected_backend_name]
         if source.exists():
+            # Copie pour le FileManager (vrai Golden Template)
             shutil.copy(str(source), str(templates_dir / "tsconfig.backend.json"))
-            click.echo(f"✅ Template Backend ({selected_backend}) stocké localement.")
+            click.echo(f"✅ Template Backend ({selected_backend_name}) stocké localement.")
             
-            # Écrasement forcé si backend existant
+            # Injection immédiate pour tsc
             target_ts = target_path / "backend" / "tsconfig.json"
-            if target_ts.parent.exists():
-                shutil.copy(str(source), str(target_ts))
-                click.echo("✅ `backend/tsconfig.json` écrasé par le Golden Template.")
+            shutil.copy(str(source), str(target_ts))
+            click.echo("✅ `backend/tsconfig.json` initialisé.")
 
     # 2. Injection du Frontend Template
     frontend_ts_map = {
         "React (Vite)": "tsconfig.frontend.react.json",
         "Next.js (Vite)": "tsconfig.frontend.next.json",
-        "Vue.js (Vite)": "tsconfig.frontend.react.json" # Adaptable plus tard
+        "Vue.js (Vite)": "tsconfig.frontend.react.json"
     }
 
-    if selected_frontend in frontend_ts_map:
-        source = factory_root / "templates" / "tsconfigs" / frontend_ts_map[selected_frontend]
+    selected_frontend_name = selected_frontend
+    if selected_frontend_name in frontend_ts_map:
+        source = factory_root / "templates" / "tsconfigs" / frontend_ts_map[selected_frontend_name]
         if source.exists():
+            # Copie pour le FileManager
             shutil.copy(str(source), str(templates_dir / "tsconfig.frontend.json"))
-            click.echo(f"✅ Template Frontend ({selected_frontend}) stocké localement.")
+            click.echo(f"✅ Template Frontend ({selected_frontend_name}) stocké localement.")
 
-            # Écrasement forcé si frontend existant
+            # Injection immédiate pour tsc
             target_ts = target_path / "frontend" / "tsconfig.json"
-            if target_ts.parent.exists():
-                shutil.copy(str(source), str(target_ts))
-                click.echo("✅ `frontend/tsconfig.json` écrasé par le Golden Template.")
+            shutil.copy(str(source), str(target_ts))
+            click.echo("✅ `frontend/tsconfig.json` initialisé.")
+
+    # Injection du tsconfig.json.example à la racine (pour visibilité utilisateur)
+    # On prend le backend par défaut pour l'exemple racine
+    rootsource = factory_root / "templates" / "tsconfigs" / "tsconfig.backend.node.json"
+    if rootsource.exists():
+        shutil.copy(str(rootsource), str(target_path / "tsconfig.json.example"))
+        click.echo("✅ `tsconfig.json.example` généré à la racine.")
 
     # Initialisation du verrou .spec-lock.json
     lock_file = target_path / ".spec-lock.json"
