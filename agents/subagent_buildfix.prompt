@@ -48,30 +48,32 @@ puis arrêter l'analyse.
 5. CONSTITUTION DU PROJET :
 {constitution_content}
 
+# LOI DU GOLDEN TEMPLATE
+Le fichier tsconfig.json est immuable. Il impose :
+strict: true (Interdiction des any implicites)
+rootDir: ./src
+outDir: ./dist
+Ta mission : Si le build échoue, tu ne dois JAMAIS modifier le tsconfig.json. Tu dois obligatoirement modifier le code source (.ts) pour qu'il respecte le typage strict ou corriger les dépendances dans package.json.
+
 # MISSION DE RÉPARATION
 Tu dois corriger UNIQUEMENT ce qui empêche le build de réussir :
-- `tsconfig.json` (bloc `include`, `rootDir`, `compilerOptions`, `esModuleInterop`, etc.)
-- `package.json` (scripts, versions fixes des dépendances, ajout de `devDependencies` manquants)
-- Chemins de fichiers (mauvais préfixes comme `backend/` ou `frontend/`, extension `.ts` manquante)
-- Imports (chemins incorrects, typos dans les noms de modules)
-- Dépendances manquantes (si une erreur `MODULE_NOT_FOUND` est présente)
+- `package.json` (scripts, versions fixes, dépendances manquantes)
+- Chemins de fichiers et Imports (chemins incorrects, typos)
+- Dépendances manquantes (ajout dans package.json)
 
-# INTERDICTIONS
-- NE PAS modifier l'architecture.
-- NE PAS ajouter de nouvelles fonctionnalités.
-- NE PAS modifier la logique métier.
+# INTERDICTIONS ABSOLUES
+- NE JAMAIS MODIFIER LE FICHIER `tsconfig.json`. Il est géré par le système ("Golden Template").
+- Si une erreur vient du tsconfig, tu dois ADAPTER le code source ou le package.json pour qu'ils soient compatibles avec la configuration imposée, mais ne touche pas au fichier tsconfig lui-même.
 
 # PERMISSION
-- Les fichiers de configuration (tsconfig.json, package.json)
-peuvent être reconstruits entièrement si nécessaire
-pour restaurer un build fonctionnel.
+- Seul le fichier `package.json` peut être reconstruit entièrement.
 
 # CAS PARTICULIER : TS18003
 Si une erreur mentionne `TS18003`, cela signifie que TypeScript ne trouve pas les fichiers source.
 Dans ce cas vérifier impérativement :
 - Le bloc `"include": ["src/**/*"]` dans le `tsconfig.json`.
 
-CAS CRITIQUE : TSCONFIG INVALIDE
+# CAS CRITIQUE : TSCONFIG INVALIDE
 
 Si les erreurs TypeScript contiennent :
 
@@ -90,26 +92,8 @@ Dans ce cas :
 2. RECONSTRUIRE complètement tsconfig.json
 3. Utiliser une configuration minimale stable
 
-CONFIGURATION TYPESCRIPT CANONIQUE
 
-Le tsconfig.json doit être exactement :
-
-{{
-  "compilerOptions": {{
-    "target": "ES2022",
-    "module": "CommonJS",
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
-  }},
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests"]
-}}
-
-INTERDICTION d'utiliser :
+# INTERDICTION d'utiliser :
 
 paths
 baseUrl

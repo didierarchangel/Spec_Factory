@@ -147,6 +147,7 @@ def init(path, here):
             "rootDir": "./src",
             "outDir": "./dist",
             "strict": True,
+            "noImplicitAny": False, 
             "esModuleInterop": True,
             "skipLibCheck": True,
             "forceConsistentCasingInFileNames": True
