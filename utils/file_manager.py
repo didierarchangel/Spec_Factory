@@ -109,3 +109,35 @@ class FileManager:
             return []
             
         return [f.name for f in dir_path.glob(f"*{extension}")]
+
+    def extract_and_write(self, code: str) -> list:
+        """Extrait les fichiers du code (format Spec-Kit) et les écrit sur le disque."""
+        import re
+        written_files = []
+        if not code:
+            return written_files
+
+        # Regex robuste pour détecter les en-têtes de fichiers (Fichier : path, [DEBUT_FICHIER: path], etc.)
+        pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+        file_blocks = re.split(pattern, code)
+        
+        if len(file_blocks) > 1:
+            for i in range(1, len(file_blocks), 2):
+                file_path = file_blocks[i].strip()
+                file_content = file_blocks[i+1].strip()
+                
+                # Nettoyage profond (marqueurs FIN, backticks markdown)
+                file_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', file_content)
+                file_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', file_content)
+                file_content = file_content.replace('```', '')
+                
+                # Protection JSON spécifique
+                if file_path.endswith('.json'):
+                    file_content = re.sub(r'/\*\*[\s\S]*?\*/', '', file_content)
+                    file_content = re.sub(r'/\*[\s\S]*?\*/', '', file_content)
+                    file_content = re.sub(r'(?m)^\s*//.*$', '', file_content)
+                
+                if self.safe_write(file_path, file_content.strip()):
+                    written_files.append(file_path)
+        
+        return written_files

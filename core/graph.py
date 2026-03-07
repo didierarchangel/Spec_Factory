@@ -261,6 +261,11 @@ class SpecGraphManager:
             })
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             logger.info("✅ Implémentation terminée.")
+            
+            # Persistance immédiate des fichiers sur le disque
+            if result.get("code"):
+                self._persist_code_to_disk(result["code"])
+                
             return {
                 "code_to_verify": result["code"],
                 "impact_fichiers": result.get("impact_fichiers", []),
@@ -440,6 +445,10 @@ class SpecGraphManager:
             result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
             logger.info("✅ Réparation du build terminée.")
             
+            # Persistance immédiate des corrections sur le disque
+            if result.get("code"):
+                self._persist_code_to_disk(result["code"])
+                
             new_error_count = state.get("error_count", 0) + 1
             return {
                 "code_to_verify": result["code"],
@@ -450,6 +459,20 @@ class SpecGraphManager:
         except Exception as e:
             logger.warning(f"⚠️ Échec du BuildFixer : {str(e)}")
             return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}
+
+    def _persist_code_to_disk(self, code: str) -> list:
+        """Extrait les blocs de fichiers du code généré et les écrit physiquement sur le disque."""
+        from utils.file_manager import FileManager
+        fm = FileManager(base_path=str(self.root))
+        
+        if not code:
+            return []
+            
+        written_files = fm.extract_and_write(code)
+        if written_files:
+            logger.info(f"💾 {len(written_files)} fichiers persistés sur le disque.")
+            
+        return written_files
 
     def route_after_diagnostic(self, state: AgentState) -> str:
         """Route après le diagnostic : buildfix_node si erreur technique, sinon verify_node."""
@@ -468,36 +491,9 @@ class SpecGraphManager:
         """Nœud Intermédiaire : Exécution réelle des commandes de diagnostic."""
         logger.info("🛠️ Lancement des diagnostics réels du terminal...")
         
-        # 0. Écrire le code web généré sur le disque AVANT de lancer les tests
-        from utils.file_manager import FileManager
-        import re
-        fm = FileManager(base_path=str(self.root))
+        # 0. S'assurer que le code de l'état est bien sur le disque
         code = state.get("code_to_verify", "")
-        written_files = []
-        if code:
-            pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
-            file_blocks = re.split(pattern, code)
-            
-            if len(file_blocks) > 1:
-                logger.info("💾 Sauvegarde temporaire des fichiers pour permettre les diagnostics...")
-                for i in range(1, len(file_blocks), 2):
-                    file_path = file_blocks[i].strip()
-                    file_content = file_blocks[i+1].strip()
-                    
-                    # Nettoyage des marqueurs
-                    file_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', file_content)
-                    file_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', file_content)
-                    file_content = file_content.replace('```', '')
-                    
-                    # Protection JSON : supprimer les commentaires /** ... */ et // ... des fichiers .json
-                    if file_path.endswith('.json'):
-                        file_content = re.sub(r'/\*\*[\s\S]*?\*/', '', file_content)
-                        file_content = re.sub(r'/\*[\s\S]*?\*/', '', file_content)
-                        file_content = re.sub(r'(?m)^\s*//.*$', '', file_content)
-                        file_content = file_content.strip()
-                    
-                    fm.safe_write(file_path, file_content.strip())
-                    written_files.append(file_path)
+        written_files = self._persist_code_to_disk(code)
         
         diagnostics = []
         import subprocess

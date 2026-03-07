@@ -468,25 +468,11 @@ def run(task, provider, model, instruction):
             code = final_state.get("code_to_verify", "")
             
             if code:
-                # Regex multi-format plus robuste
-                # Supporte: // Fichier : path, # Fichier : path, [DEBUT_FICHIER: path], etc.
-                pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
-                file_blocks = re.split(pattern, code)
+                written_files = fm.extract_and_write(code)
                 
-                if len(file_blocks) > 1:
-                    for i in range(1, len(file_blocks), 2):
-                        file_path = file_blocks[i].strip()
-                        file_content = file_blocks[i+1].strip()
-                        
-                        # 1. Nettoyage des marqueurs [FIN_FICHIER]
-                        file_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', file_content)
-                        
-                        # 2. Nettoyage agressif des blocs de code Markdown (partout dans le bloc)
-                        file_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', file_content)
-                        file_content = file_content.replace('```', '')
-                        
-                        if fm.safe_write(file_path, file_content.strip()):
-                            click.echo(f"💾 Fichier sauvegardé : {file_path}")
+                if written_files:
+                    for file_path in written_files:
+                        click.echo(f"💾 Fichier sauvegardé : {file_path}")
                 else:
                     # Fallback intelligent sur l'ancien comportement
                     impacted = final_state.get("impact_fichiers", [])
