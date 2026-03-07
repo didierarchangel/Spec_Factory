@@ -144,7 +144,7 @@ def init(path, here):
     
     selected_backend_name = selected_backend
     if selected_backend_name in backend_ts_map and backend_ts_map[selected_backend_name]:
-        source = factory_root / "templates" / "tsconfigs" / backend_ts_map[selected_backend_name]
+        source = factory_root / "core" / "templates" / "tsconfigs" / backend_ts_map[selected_backend_name]
         if source.exists():
             # Copie pour le FileManager (vrai Golden Template)
             shutil.copy(str(source), str(templates_dir / "tsconfig.backend.json"))
@@ -164,7 +164,7 @@ def init(path, here):
 
     selected_frontend_name = selected_frontend
     if selected_frontend_name in frontend_ts_map:
-        source = factory_root / "templates" / "tsconfigs" / frontend_ts_map[selected_frontend_name]
+        source = factory_root / "core" / "templates" / "tsconfigs" / frontend_ts_map[selected_frontend_name]
         if source.exists():
             # Copie pour le FileManager
             shutil.copy(str(source), str(templates_dir / "tsconfig.frontend.json"))
@@ -177,7 +177,7 @@ def init(path, here):
 
     # Injection du tsconfig.json.example à la racine (pour visibilité utilisateur)
     # On prend le backend par défaut pour l'exemple racine
-    rootsource = factory_root / "templates" / "tsconfigs" / "tsconfig.backend.node.json"
+    rootsource = factory_root / "core" / "templates" / "tsconfigs" / "tsconfig.backend.node.json"
     if rootsource.exists():
         shutil.copy(str(rootsource), str(target_path / "tsconfig.json.example"))
         click.echo("✅ `tsconfig.json.example` généré à la racine.")

@@ -12,9 +12,11 @@ logger = logging.getLogger(__name__)
 class FileManager:
     """Gestionnaire de fichiers sécurisé pour Speckit.Factory"""
 
-    def __init__(self, base_path: str = "."):
+    def __init__(self, base_path: str = ".", template_path: str = "core/templates"):
         # On sécurise toujours le chemin de base en chemin absolu strict
         self.base_path = Path(base_path).resolve()
+        # Chemin vers les templates de référence (Golden Templates) de la Factory
+        self.template_path = Path(__file__).parent.parent / template_path
 
     def _is_safe_path(self, target_path: Path) -> bool:
         """Vérifie que le chemin cible ne tente pas de sortir du répertoire de base (Directory Traversal)."""
@@ -135,33 +137,61 @@ class FileManager:
         return [f.name for f in dir_path.glob(f"*{extension}")]
 
     def extract_and_write(self, code: str) -> list:
-        """Extrait les fichiers du code (format Spec-Kit) et les écrit sur le disque."""
+        """Extrait les fichiers du code (format Spec-Kit) et les écrit sur le disque avec filtre Golden Template."""
         import re
         written_files = []
         if not code:
             return written_files
 
-        # Regex robuste pour détecter les en-têtes de fichiers (Fichier : path, [DEBUT_FICHIER: path], etc.)
+        # Regex robuste pour détecter les en-têtes de fichiers
         pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
         file_blocks = re.split(pattern, code)
         
         if len(file_blocks) > 1:
             for i in range(1, len(file_blocks), 2):
-                file_path = file_blocks[i].strip()
-                file_content = file_blocks[i+1].strip()
+                file_path_str = file_blocks[i].strip()
+                ai_content = file_blocks[i+1].strip()
                 
+                # --- FILTRE PHYSIQUE : GOLDEN TEMPLATE OVERRIDE ---
+                final_content = ai_content
+                
+                if "tsconfig.json" in file_path_str.lower():
+                    is_backend = "backend" in file_path_str.lower()
+                    template_key = "tsconfig.backend.json" if is_backend else "tsconfig.frontend.json"
+                    
+                    # 1. Priorité : Template local du projet (Stack-Specific)
+                    project_template = self.base_path / ".speckit" / "templates" / template_key
+                    # 2. Fallback : Template global de la Factory (Standard)
+                    factory_template = self.template_path / template_key
+                    # 3. Fallback Legacy
+                    legacy_template = self.base_path / "tsconfig.json.example"
+
+                    chosen_template = None
+                    if project_template.exists(): chosen_template = project_template
+                    elif factory_template.exists(): chosen_template = factory_template
+                    elif legacy_template.exists(): chosen_template = legacy_template
+
+                    if chosen_template:
+                        try:
+                            final_content = chosen_template.read_text(encoding="utf-8")
+                            logger.info(f"🛡️ Golden Template appliqué pour : {file_path_str} (Source: {chosen_template.name})")
+                        except Exception as e:
+                            logger.error(f"❌ Erreur lecture template {chosen_template}: {e}")
+                    else:
+                        logger.warning(f"⚠️ Aucun Golden Template trouvé pour {file_path_str}, utilisation du contenu IA.")
+
                 # Nettoyage profond (marqueurs FIN, backticks markdown)
-                file_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', file_content)
-                file_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', file_content)
-                file_content = file_content.replace('```', '')
+                final_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', final_content)
+                final_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', final_content)
+                final_content = final_content.replace('```', '')
                 
                 # Protection JSON spécifique
-                if file_path.endswith('.json'):
-                    file_content = re.sub(r'/\*\*[\s\S]*?\*/', '', file_content)
-                    file_content = re.sub(r'/\*[\s\S]*?\*/', '', file_content)
-                    file_content = re.sub(r'(?m)^\s*//.*$', '', file_content)
+                if file_path_str.endswith('.json'):
+                    final_content = re.sub(r'/\*\*[\s\S]*?\*/', '', final_content)
+                    final_content = re.sub(r'/\*[\s\S]*?\*/', '', final_content)
+                    final_content = re.sub(r'(?m)^\s*//.*$', '', final_content)
                 
-                if self.safe_write(file_path, file_content.strip()):
-                    written_files.append(file_path)
+                if self.safe_write(file_path_str, final_content.strip()):
+                    written_files.append(file_path_str)
         
         return written_files
