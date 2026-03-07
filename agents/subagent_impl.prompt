@@ -223,10 +223,10 @@ avec une version fixe.
 
 Exemple :
 
-"devDependencies": {
+"devDependencies": {{
   "typescript": "5.4.5",
   "tsc-watch": "6.0.0"
-}
+}}
 
 Règle 8 : INTERDICTION HORS CONSTITUTION
 
