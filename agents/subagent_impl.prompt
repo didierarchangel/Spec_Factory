@@ -45,6 +45,7 @@ Implémente la tâche suivante : "{target_task}"
 - Règle 4 : Modularité et Testabilité. Chaque fonction doit être prête à être testée.
 - Règle 5 : TESTS ET PLACEHOLDERS. 
   * Si tu es à une étape "Initialisation" (Setup, Structure, Routing de base), tu AS LE DROIT de générer des composants vides (Stubs) ou des routes "Hello World" sans implémenter des tests complexes, mais structure bien le code.
+  * **ZÉRO PLACEHOLDER DANS LA LOGIQUE** : Même en phase initiale, il est INTERDIT d'utiliser des commentaires comme `// TODO` ou `// Placeholder` dans du code fonctionnel (ex: Passport strategies, Middlewares). Si la logique n'est pas encore implémentée, retourne une erreur explicite ou une valeur par défaut cohérente, mais ne laisse JAMAIS de "trous" de code.
   * Si tu es à une étape avancée (Implémentation métier), tu DOIS générer des tests unitaires concrets et ne plus utiliser de placeholders.
 - Règle 6 : CONFIGURATION. Ne prends aucune initiative sur les chemins (ex: proxy `/api`) qui ne sont pas dans la Constitution. Si tu dois faire un choix technique non spécifié, justifie-le dans le "Résumé".
 - Règle 7 : 📦 **SYNCHRONISATION PACKAGE.JSON**. Si tu ajoutes un `import` d'une bibliothèque tierce, tu DOIS impérativement l'ajouter à la section `dependencies` ou `devDependencies` du `package.json` correspondant. **IMPORTANT** : Utilise TOUJOURS des versions fixes (ex: `"express": "4.19.2"`) et JAMAIS de plages de versions (ex: `^4.19.2`) pour garantir la reproductibilité exigée par l'Auditeur.
@@ -76,13 +77,28 @@ Implémente la tâche suivante : "{target_task}"
       {{ "compilerOptions": {{ "target": "ES2022", "module": "commonjs", "lib": ["ES2022"], "outDir": "./dist", "rootDir": "./src", "strict": true, "esModuleInterop": true, "allowSyntheticDefaultImports": true, "skipLibCheck": true, "forceConsistentCasingInFileNames": true, "resolveJsonModule": true, "declaration": true, "declarationMap": true, "sourceMap": true }}, "include": ["src/**/*"], "exclude": ["node_modules", "dist", "**/*.test.ts"] }}
       ```
       Le champ `include` DOIT être `["src/**/*"]` — NE JAMAIS restreindre 'include' aux seuls fichiers .test.ts..
-  * **package.json racine** : Le script `build` à la racine du projet NE DOIT PAS appeler `tsc` directement. Il doit faire : `"build": "cd backend && npm run build"` ou être absent.
+   * **package.json backend OBLIGATOIRE** : Le script `build` dans le `backend/package.json` DOIT impérativement être `"build": "tsc"`. Le script `dev` doit être `"dev": "ts-node-dev --respawn --transpile-only src/server.ts"`.
+   * **Variables d'Environnement (Robustesse)** : Ton code (ex: `app.ts` ou `config/database.ts`) DOIT valider la présence des variables critiques dès l'initialisation. Exemple : `if (!process.env.MONGO_URI) {{ throw new Error('MONGO_URI manquante'); }}`. Ne laisse JAMAIS une connexion échouer silencieusement sans logs explicites.
+   * **Passport Initialisation** : Si la Constitution mentionne Passport.js, tu DOIS inclure `app.use(passport.initialize());` dans ton `app.ts` dès l'étape de setup, même si les stratégies sont minimales.
+   * **package.json racine** : Le script `build` à la racine du projet NE DOIT PAS appeler `tsc` directement. Il doit faire : `"build": "cd backend && npm run build"` ou être absent.
 - Règle 12 : 📄 **INTÉGRITÉ DES FICHIERS JSON**. Les fichiers `package.json`, `tsconfig.json` et tout fichier `.json` DOIVENT être du JSON pur et valide. 
   * **JAMAIS de commentaires** (`/** ... */`, `//`, `/* */`) dans un fichier JSON. Le format JSON ne supporte PAS les commentaires.
   * **EXCEPTION TRACABILITÉ** : Si `current_step` est `02_config_backend_typescript`, tu DOIS ajouter l'en-tête `// @SPEC-KIT-TASK: 02_config_backend_typescript` tout en haut des fichiers de configuration (`tsconfig.json`, `.eslintrc.js`, etc.). C'est l'unique exception où un commentaire/en-tête est autorisé dans un fichier JSON.
   * Le JSON doit commencer par `{{` (ou l'en-tête cité plus haut) et finir par `}}`, sans aucun autre caractère autour.
 - Règle 13 : 📁 **PRÉFIXE DE CHEMIN OBLIGATOIRE**. Si le projet a un dossier `backend/` et/ou `frontend/`, TOUS les chemins de fichiers que tu génères DOIVENT inclure ce préfixe. Ne génère JAMAIS `// Fichier : src/app.ts` si le fichier doit aller dans le backend. Génère `// Fichier : backend/src/app.ts`. Même chose pour le frontend : `// Fichier : frontend/src/App.tsx`. Un chemin sans préfixe écrira le fichier à la racine du projet et causera une erreur TS18003.
 - Règle 14 : 🌐 **COUVERTURE MULTI-ENVIRONNEMENT**. Si le titre ou la description de `current_step` mentionne à la fois "Frontend" et "Backend" (ou "Projet" de manière globale), tu DOIS t'assurer de générer ou mettre à jour les infrastructures des DEUX environnements (ex: les deux `package.json`) dans la même tâche si nécessaire, pour éviter un blocage à l'audit.
+- Règle 15 : 🛠️ **SCRIPTS ET DEVDEPENDENCIES**. Tout outil utilisé dans un script `package.json` (ex: `ts-node-dev`, `rimraf`, `tsc`) DOIT impérativement être listé dans les `devDependencies` du même fichier avec une version fixe (ex: `"ts-node-dev": "2.0.0"`, `"typescript": "5.4.5"`). L'omission d'un outil utilisé est une erreur de configuration grave.
+- Règle 16 : 📦 **DÉPENDANCES ET IMPORTS**. Toute bibliothèque importée (ex: `import * as cors from 'cors'`) DOIT impérativement être listée dans les `dependencies` du `package.json`. L'oubli d'une dépendance importée est une faute d'implémentation majeure.
+- Règle 17 : 📝 **TRAÇABILITÉ ABSOLUE**. Chaque fichier source (ex: `.ts`, `.js`, `.tsx`, `.css`) DOIT commencer par l'en-tête de traçabilité officiel `@SPEC-KIT-TASK` (voir template Rule 10/Section 5 Constitution). Seuls les fichiers JSON pur (`.json`) en sont exemptés (sauf exception Rule 12).
+
+# AUTO-CONTRÔLE (AVANT DE RÉPONDRE)
+Avant de livrer ton code, vérifie cette checklist :
+1. [ ] Est-ce que TOUTES les libs importées sont dans le `package.json` ?
+2. [ ] Est-ce que TOUTES les versions sont FIXES (pas de `^`) ?
+3. [ ] Est-ce que TOUS les fichiers ont l'en-tête `@SPEC-KIT-TASK` ?
+4. [ ] Est-ce que le script `build` est bien `"build": "tsc"` dans le backend ?
+5. [ ] Est-ce que les variables d'environnement (`MONGO_URI`, etc.) sont vérifiées avec un `throw Error` ?
+6. [ ] Est-ce que mes fichiers JSON sont valides et sans commentaires ?
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois séparer ta réponse en DEUX parties distinctes :
