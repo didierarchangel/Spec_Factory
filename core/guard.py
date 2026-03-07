@@ -44,3 +44,9 @@ class SubagentVerifyOutput(BaseModel):
     alertes: str = Field(description="Écarts avec la Constitution ou failles. Ou 'Aucune alerte.'")
     verdict_final: str = Field(description="Doit être STRICTEMENT 'APPROUVÉ' ou 'REJETÉ'.")
     action_corrective: str = Field(description="Instructions de correction si REJETÉ, sinon 'N/A'.")
+
+
+class SubagentBuildFixOutput(BaseModel):
+    """Schéma de sortie attendu pour subagent_buildfix.prompt."""
+    resume: str = Field(description="Explication concise des corrections de build effectuées.")
+    impact_fichiers: List[str] = Field(description="Liste des fichiers de configuration ou de structure corrigés.")

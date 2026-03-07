@@ -65,6 +65,10 @@ Prends en compte les éléments suivants pour ton développement :
 # DIAGNOSTICS DU TERMINAL (ERREURS RÉELLES)
 {terminal_diagnostics}
 
+# SEMANTIC CODE MAP (STRUCTURE RÉELLE DU PROJET)
+Utilise cette carte pour comprendre les imports existants, les exports et la structure des fichiers. Ne devine JAMAIS un chemin qui n'est pas dans cette liste ou dans tes instructions.
+{code_map}
+
 # TÂCHE À RÉALISER
 Implémente la tâche suivante : "{target_task}"
 

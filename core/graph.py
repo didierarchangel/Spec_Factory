@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput
+from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput
 from langchain_core.output_parsers import JsonOutputParser
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,9 @@ class AgentState(TypedDict):
     
     # Instructions utilisateur additionnelles (Ex: speckit run --instruction "Fais ceci")
     user_instruction: str
+    
+    # Carte sémantique du code (Semantic Code Map)
+    code_map: str
 
 
 class SpecGraphManager:
@@ -250,6 +253,7 @@ class SpecGraphManager:
                 "analysis_output": state["analysis_output"],
                 "feedback_correction": state.get("feedback_correction", ""),
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
+                "code_map": state.get("code_map", "Non générée"),
                 "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
@@ -337,6 +341,120 @@ class SpecGraphManager:
                 "error_count": new_error_count,
                 "last_error": error_msg
             }
+
+    def code_map_node(self, state: AgentState) -> dict:
+        """Nœud de génération de la Semantic Code Map."""
+        logger.info("🗺️ Génération de la Semantic Code Map...")
+        
+        import os
+        import re
+        import json
+        
+        code_map = {{
+            "file_tree": [],
+            "semantics": {{}}
+        }}
+        
+        # Extensions à scanner pour la sémantique
+        source_extensions = ('.ts', '.js', '.tsx', '.jsx')
+        # Dossiers à ignorer
+        ignore_dirs = {{'node_modules', 'dist', '.git', '__pycache__', '.speckit-rules'}}
+        
+        for root, dirs, files in os.walk(str(self.root)):
+            # Filtrage des dossiers
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            
+            for file in files:
+                rel_path = os.path.relpath(os.path.join(root, file), str(self.root)).replace('\\', '/')
+                code_map["file_tree"].append(rel_path)
+                
+                if file.endswith(source_extensions):
+                    try:
+                        with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
+                            content = f.read()
+                            
+                            # Extraction simplifiée des imports
+                            # Match : import ... from 'lib' ou import * as ... from 'lib' ou import 'lib'
+                            imports = re.findall(r"import\s+(?:(?:\*|[\w\s,{{}}]+)\s+from\s+)?['\"]([^'\"]+)['\"]", content)
+                            
+                            # Extraction simplifiée des exports
+                            # Match : export const ..., export function ..., export class ..., export default ...
+                            exports = re.findall(r"export\s+(?:default\s+)?(?:const|let|var|function|class|interface|type|async\s+function)\s+([\w$]+)", content)
+                            
+                            # Extraction des fonctions/méthodes (approximation)
+                            # Match : function name(...) { or async function name(...) { or const name = (...) => {
+                            functions = re.findall(r"(?:function|const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>", content)
+                            functions += re.findall(r"(?:async\s+)?function\s+([\w$]+)\s*\(", content)
+                            functions += re.findall(r"(?:async\s+)?([\w$]+)\s*\([^)]*\)\s*\{", content) # Pour les méthodes de classe
+                            
+                            # Filtrage des doublons et mots clés JS dans les extractions
+                            functions = list(set([fn for fn in functions if fn not in ('if', 'for', 'while', 'switch', 'catch', 'constructor')]))
+                            
+                            code_map["semantics"][rel_path] = {{
+                                "imports": list(set(imports)),
+                                "exports": list(set(exports)),
+                                "functions": functions[:15] # Limite pour rester compact
+                            }}
+                    except Exception as e:
+                        logger.warning(f"⚠️ Impossible de parser {rel_path} pour la Code Map : {str(e)}")
+        
+        # Formatage compact en JSON string
+        code_map_str = json.dumps(code_map, indent=2)
+        logger.info(f"✅ Code Map générée ({len(code_map['file_tree'])} fichiers référencés).")
+        
+        return {{"code_map": code_map_str}}
+
+    def buildfix_node(self, state: AgentState) -> dict:
+        """Nœud de réparation automatique du build (TypeScript/Node)."""
+        # Si le build est déjà un succès, on passe directement.
+        diagnostics = state.get("terminal_diagnostics", "")
+        if "✅ SUCCÈS" in diagnostics and "❌ ÉCHEC" not in diagnostics:
+            # logger.info("✅ Build déjà réussi, buildfix_node ignoré.")
+            return {"feedback_correction": ""}
+
+        logger.info("🛠️ Tentative de réparation automatique du build...")
+        prompt_text = self._load_prompt("subagent_buildfix.prompt")
+        
+        parser = JsonOutputParser(pydantic_object=SubagentBuildFixOutput)
+        prompt_text += "\n\n{format_instructions}"
+        
+        prompt = ChatPromptTemplate.from_template(prompt_text)
+        chain = prompt | self.model | StrOutputParser()
+        
+        try:
+            raw_output = chain.invoke({{
+                "code_map": state.get("code_map", "Non générée"),
+                "code_to_verify": state["code_to_verify"],
+                "terminal_diagnostics": state.get("terminal_diagnostics", ""),
+                "constitution_content": state["constitution_content"],
+                "format_instructions": parser.get_format_instructions()
+            }})
+            result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
+            logger.info("✅ Réparation du build terminée.")
+            
+            new_error_count = state.get("error_count", 0) + 1
+            return {
+                "code_to_verify": result["code"],
+                "impact_fichiers": list(set(state.get("impact_fichiers", []) + result.get("impact_fichiers", []))),
+                "error_count": new_error_count,
+                "feedback_correction": f"BUILD FIX APPLIED (Attempt {new_error_count}): {result['resume']}"
+            }
+        except Exception as e:
+            logger.warning(f"⚠️ Échec du BuildFixer : {str(e)}")
+            return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}
+
+    def route_after_diagnostic(self, state: AgentState) -> str:
+        """Route après le diagnostic : buildfix_node si erreur technique, sinon verify_node."""
+        diagnostics = state.get("terminal_diagnostics", "")
+        
+        # On ne tente le buildfix que s'il y a un échec réel de build ou de tests
+        if "❌ ÉCHEC" in diagnostics or "❌ ERREUR" in diagnostics:
+             # Protection contre boucle infinie (on réutilise le compteur global)
+             if state.get("error_count", 0) < 3:
+                 logger.info("🔧 Échec du build détecté. Routage vers buildfix_node...")
+                 return "buildfix_node"
+        
+        return "verify_node"
             
     def diagnostic_node(self, state: AgentState) -> dict:
         """Nœud Intermédiaire : Exécution réelle des commandes de diagnostic."""
@@ -393,52 +511,56 @@ class SpecGraphManager:
                     except Exception as e:
                         diagnostics.append(f"❌ ERREUR lors de npm install dans {dir_name}: {str(e)}")
                 
-                # Vérifier la présence de fichiers sources pour éviter de crasher les étapes de "Setup"
-                import os
-                has_source = False
-                src_path = target_dir / "src"
-                if src_path.exists() and any(src_path.iterdir()):
-                    has_source = True
-                else:
-                    try:
-                        for f in os.listdir(target_dir):
-                            if os.path.isfile(target_dir / f) and f.endswith((".ts", ".js", ".tsx", ".jsx", ".vue")):
-                                if not f.endswith(".config.js") and not f.endswith(".config.ts") and not f.startswith("jest"):
-                                    has_source = True
-                                    break
-                    except Exception:
-                        pass
-                
-                if not has_source:
-                    logger.info(f"⏭️ Aucun fichier source métier détecté dans {dir_name}, build ignoré.")
-                    diagnostics.append(f"ℹ️ Aucun fichier source métier détecté dans {dir_name}, build ignoré pour cette étape d'initialisation.")
-                else:
-                    cmd = "npm run build"
-                    logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
-                    try:
-                        result = subprocess.run(
-                            cmd, 
-                            shell=True, 
-                            capture_output=True, 
-                            text=True, 
-                            cwd=str(target_dir),
-                            timeout=90
-                        )
-                        
-                        if result.returncode != 0:
-                            # Si le script 'build' n'existe pas, npm renvoie une erreur spécifique, on peut l'ignorer ou le signaler
-                            if "Missing script: \"build\"" in result.stderr or "Missing script: build" in result.stderr:
-                                diagnostics.append(f"ℹ️ Aucun script 'build' dans {dir_name}.")
-                            else:
-                                error_report = f"❌ ÉCHEC de [{cmd}] dans {dir_name} :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
-                                diagnostics.append(error_report)
+                # 2. Détection de dépendances manquantes (npm ls)
+                logger.info(f"🔍 Vérification des dépendances dans {dir_name}...")
+                try:
+                    res_ls = subprocess.run("npm ls --depth=0", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=60)
+                    if res_ls.returncode != 0:
+                        diagnostics.append(f"⚠️ DÉPENDANCES MANQUANTES/INVALIDES dans {dir_name} :\n{res_ls.stdout}\n{res_ls.stderr}")
+                    else:
+                        diagnostics.append(f"✅ Dépendances OK dans {dir_name}")
+                except Exception as e:
+                    diagnostics.append(f"❌ Erreur lors de npm ls dans {dir_name}: {str(e)}")
+
+                # 3. Vérification de compilation TypeScript (tsc --noEmit)
+                logger.info(f"🔍 Compilation TypeScript (--noEmit) dans {dir_name}...")
+                # On utilise npx pour être sûr de trouver tsc même s'il n'est pas global
+                try:
+                    res_tsc = subprocess.run("npx tsc --noEmit", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
+                    if res_tsc.returncode != 0:
+                        diagnostics.append(f"❌ ÉCHEC de [tsc --noEmit] dans {dir_name} :\nSTDOUT: {res_tsc.stdout}\nSTDERR: {res_tsc.stderr}")
+                    else:
+                        diagnostics.append(f"✅ SUCCÈS de [tsc --noEmit] dans {dir_name}")
+                except Exception as e:
+                    diagnostics.append(f"❌ Erreur lors de tsc --noEmit dans {dir_name}: {str(e)}")
+
+                # 4. Exécution du build (npm run build)
+                cmd = "npm run build"
+                logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
+                try:
+                    result = subprocess.run(
+                        cmd, 
+                        shell=True, 
+                        capture_output=True, 
+                        text=True, 
+                        cwd=str(target_dir),
+                        timeout=90
+                    )
+                    
+                    if result.returncode != 0:
+                        # Si le script 'build' n'existe pas, npm renvoie une erreur spécifique, on peut l'ignorer ou le signaler
+                        if "Missing script: \"build\"" in result.stderr or "Missing script: build" in result.stderr:
+                            diagnostics.append(f"ℹ️ Aucun script 'build' dans {dir_name}.")
                         else:
-                            diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
-                            
-                    except subprocess.TimeoutExpired:
-                        diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}] dans {dir_name}")
-                    except Exception as e:
-                        diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] dans {dir_name} : {str(e)}")
+                            error_report = f"❌ ÉCHEC de [{cmd}] dans {dir_name} :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+                            diagnostics.append(error_report)
+                    else:
+                        diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
+                        
+                except subprocess.TimeoutExpired:
+                    diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}] dans {dir_name}")
+                except Exception as e:
+                    diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] dans {dir_name} : {str(e)}")
 
             if (target_dir / "pyproject.toml").exists() or (target_dir / "requirements.txt").exists():
                 found_something = True
@@ -505,12 +627,26 @@ class SpecGraphManager:
 
         # Transitions (flux)
         self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
+        self.graph_builder.add_node("buildfix_node", self.buildfix_node)
+        self.graph_builder.add_node("code_map_node", self.code_map_node)
+        
         self.graph_builder.add_edge(START, "analysis_node")
-        self.graph_builder.add_edge("analysis_node", "impl_node")
+        self.graph_builder.add_edge("analysis_node", "code_map_node")
+        self.graph_builder.add_edge("code_map_node", "impl_node")
         self.graph_builder.add_edge("impl_node", "diagnostic_node")
-        self.graph_builder.add_edge("diagnostic_node", "verify_node")
+        
+        # Branchement conditionnel (Correction automatique du build)
+        self.graph_builder.add_conditional_edges(
+            "diagnostic_node",
+            self.route_after_diagnostic,
+            {
+                "buildfix_node": "buildfix_node",
+                "verify_node": "verify_node"
+            }
+        )
+        self.graph_builder.add_edge("buildfix_node", "diagnostic_node") # Boucle pour vérifier la correction
 
-        # Branchement conditionnel (Boucle de correction)
+        # Branchement conditionnel (Boucle de correction finale / Audit)
         self.graph_builder.add_conditional_edges(
             "verify_node",
             self.route_after_verify,
