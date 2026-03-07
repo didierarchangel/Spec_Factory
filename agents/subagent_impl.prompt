@@ -222,11 +222,14 @@ outDir
 tu dois corriger tsconfig.json
 avant toute autre modification.
 
-Règle 10 : TRAÇABILITÉ
+Règle 10 : TRAÇABILITÉ ABSOLUE
 
-Tu dois mettre à jour le fichier etapes.md.
+Chaque fichier source (TS, JS, CSS, HTML, etc.) DOIT
+inclure l'en-tête de traçabilité @SPEC-KIT-TASK au tout début.
 
-Ajoute une ligne décrivant l'étape terminée.
+Exemple :
+
+// @SPEC-KIT-TASK: 01_setup_project
 
 Règle 11 : INTÉGRITÉ JSON
 

@@ -447,9 +447,12 @@ class SpecGraphManager:
             if result.get("code"):
                 self._persist_code_to_disk(result["code"])
                 
+            # FUSION du code : on fusionne les corrections avec le code de base
+            merged_code = self._merge_code(state.get("code_to_verify", ""), result.get("code", ""))
+                
             new_error_count = state.get("error_count", 0) + 1
             return {
-                "code_to_verify": result["code"],
+                "code_to_verify": merged_code,
                 "impact_fichiers": list(set(state.get("impact_fichiers", []) + result.get("impact_fichiers", []))),
                 "error_count": new_error_count,
                 "feedback_correction": f"BUILD FIX APPLIED (Attempt {new_error_count}): {result['resume']}"
@@ -471,6 +474,47 @@ class SpecGraphManager:
             logger.info(f"💾 {len(written_files)} fichiers persistés sur le disque.")
             
         return written_files
+
+    def _merge_code(self, base_code: str, delta_code: str) -> str:
+        """Fusionne deux blocs de code multi-fichiers. Le delta écrase la base si conflit."""
+        import re
+        if not delta_code:
+            return base_code
+        if not base_code:
+            return delta_code
+            
+        pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+        
+        def parse_to_dict(code):
+            blocks = re.split(pattern, code)
+            file_dict = {}
+            if len(blocks) > 1:
+                for i in range(1, len(blocks), 2):
+                    fname = blocks[i].strip()
+                    # On cherche l'en-tête pour la reconstruction
+                    header_match = re.search(fr'(?m)^.*{re.escape(fname)}.*$', code)
+                    header = header_match.group(0) if header_match else f"// [DEBUT_FICHIER: {fname}]"
+                    file_dict[fname] = {
+                        "header": header,
+                        "content": blocks[i+1]
+                    }
+            return file_dict
+
+        base_dict = parse_to_dict(base_code)
+        delta_dict = parse_to_dict(delta_code)
+        
+        # Fusion : delta gagne
+        base_dict.update(delta_dict)
+        
+        # Reconstruction
+        merged = []
+        for fname, data in base_dict.items():
+            merged.append(data["header"])
+            merged.append(data["content"])
+            # On ajoute un marqueur de fin générique pour la propreté
+            merged.append(f"// [FIN_FICHIER: {fname}]")
+            
+        return "\n".join(merged)
 
     def route_after_diagnostic(self, state: AgentState) -> str:
         """Route après le diagnostic : buildfix_node si erreur technique, sinon verify_node."""

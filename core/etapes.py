@@ -20,6 +20,7 @@ class EtapeManager:
         self.root = Path(project_root)
         self.constitution_path = self.root / "Constitution" / "CONSTITUTION.md"
         self.etapes_path = self.root / "Constitution" / "etapes.md"
+        self.history_path = self.root / "Constitution" / "EtapesAdd.md"
 
     def generate_steps_from_constitution(self) -> str:
         """Analyse la Constitution pour définir les étapes du projet."""
@@ -107,9 +108,10 @@ class EtapeManager:
             "progress_pct": pct,
         }
 
-    def mark_step_as_completed(self, step_id: str) -> bool:
+    def mark_step_as_completed(self, step_id: str, synthesis: str = None) -> bool:
         """Passe une étape de [ ] à [x] une fois validée.
-
+        
+        Si une synthèse est fournie, elle est ajoutée au fichier EtapesAdd.md.
         Retourne True si l'étape a été trouvée et marquée, False sinon.
         """
         if not self.etapes_path.exists():
@@ -121,11 +123,40 @@ class EtapeManager:
         target = f"## [ ] {step_id}"
 
         if target not in content:
-            logger.warning("Étape '%s' non trouvée ou déjà complétée.", step_id)
+            # Fallback : vérifier si déjà complétée
+            if f"## [x] {step_id}" in content:
+                logger.info("Étape '%s' déjà marquée comme terminée.", step_id)
+                # On ajoute quand même à l'historique si demandé
+                if synthesis:
+                    self.add_step_to_history(step_id, synthesis)
+                return True
+            logger.warning("Étape '%s' non trouvée.", step_id)
             return False
 
         updated_content = content.replace(target, f"## [x] {step_id}")
         self.etapes_path.write_text(updated_content, encoding="utf-8")
+        logger.info("Étape '%s' marquée comme terminée dans etapes.md.", step_id)
 
-        logger.info("Étape '%s' marquée comme terminée.", step_id)
+        if synthesis:
+            self.add_step_to_history(step_id, synthesis)
+
         return True
+
+    def add_step_to_history(self, step_id: str, synthesis: str):
+        """Ajoute une étape réalisée avec sa synthèse dans EtapesAdd.md."""
+        try:
+            self.history_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            header = ""
+            if not self.history_path.exists():
+                header = "# HISTORIQUE DES ÉTAPES RÉALISÉES (EtapesAdd.md)\n\n"
+            
+            with open(self.history_path, "a", encoding="utf-8") as f:
+                if header:
+                    f.write(header)
+                f.write(f"### ✅ Étape : {step_id}\n")
+                f.write(f"{synthesis}\n\n---\n\n")
+            
+            logger.info("Synthèse ajoutée à EtapesAdd.md pour l'étape %s.", step_id)
+        except Exception as e:
+            logger.error("Impossible d'écrire l'historique dans EtapesAdd.md : %s", e)
