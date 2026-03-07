@@ -58,12 +58,18 @@ Implémente la tâche suivante : "{target_task}"
   * Tu dois lire l'historique dans `{completed_tasks_summary}`.
   * Dans ton bloc de code, tu dois inclure le fichier `etapes.md`.
   * Tu dois ajouter une ligne de résumé (Statut + Description courte) juste après la dernière étape complétée pour marquer l'avancement de la tâche actuelle.
-- Règle 11 : 🔐 **AUTHENTIFICATION NODE.JS/EXPRESS**. Quand tu implémentes une authentification JWT avec Express :
-  * **INTERDIT** : N'utilise JAMAIS `dotenv`, `ts-node`, `cookie-parser`, ou toute autre bibliothèque qui n'est pas dans la Constitution. Utilise toujours `process.env` directement (les variables sont chargées par le script de démarrage).
-  * **JWT_SECRET** : Le secret JWT DOIT être lu depuis `process.env.JWT_SECRET` et le serveur DOIT échouer au démarrage (throw Error) si cette variable est absente. JAMAIS de valeur par défaut en dur.
-  * **req.user TypeScript** : Pour typer `req.user`, utilise l'extension d'interface Express dans un fichier dédié `src/types/express.d.ts` en étendant `Express.Request` et NON `Express.User`, pour éviter le conflit TS2717 avec `@types/passport`.
+- Règle 11 : 🔐 **AUTHENTIFICATION NODE.JS/EXPRESS & TYPESCRIPT STRICT**. Quand tu implémentes une authentification JWT avec Express/TypeScript :
+  * **INTERDIT** : N'utilise JAMAIS `dotenv`, `ts-node`, `cookie-parser`, `helmet`, `express-mongo-sanitize`, `xss-clean`, ou toute autre bibliothèque qui n'est pas EXPLICITEMENT listée dans la Constitution. Vérifie CHAQUE import contre la Constitution avant de l'écrire.
+  * **JWT_SECRET** : Le secret JWT DOIT être lu depuis `process.env.JWT_SECRET`. Déclare-le avec l'opérateur non-null assertion : `const JWT_SECRET = process.env.JWT_SECRET!;` après un `if (!process.env.JWT_SECRET) throw new Error(...)`. Cela évite les erreurs TS2769 et TS2322 dans `jwt.sign()` et `passport-jwt`.
+  * **req.user TypeScript** : Pour typer `req.user`, utilise l'extension d'interface Express dans un fichier dédié `backend/src/types/express.d.ts` (dans le dossier backend !) en étendant `Express.Request` et NON `Express.User`, pour éviter le conflit TS2717 avec `@types/passport`.
+  * **Mongoose Document** : Quand tu crées une interface qui étend `mongoose.Document`, NE redéfinis JAMAIS `_id` dans ton interface. `Document` fournit déjà `_id`. Sinon tu obtiens TS2320.
   * **comparePassword** : La méthode `comparePassword` du modèle User DOIT utiliser `this.password` directement (méthode d'instance Mongoose). Elle ne doit JAMAIS faire de requête `findById` supplémentaire.
-- Règle 12 : 📄 **INTÉGRITÉ PACKAGE.JSON**. Le fichier `package.json` DOIT être un JSON pur et valide. Aucun commentaire, aucun caractère avant ou après les accolades `{{` `}}` de l'objet racine. Si tu génères un `package.json`, vérifie qu'il est strictement limité au JSON sans pollution.
+  * **@types manquants** : Pour CHAQUE bibliothèque tierce que tu importes (ex: `bcryptjs`, `jsonwebtoken`, `passport-jwt`), tu DOIS aussi ajouter son paquet `@types/xxx` correspondant dans les `devDependencies`.
+  * **esModuleInterop** : Le `tsconfig.json` du backend DOIT contenir `"esModuleInterop": true` et `"allowSyntheticDefaultImports": true` pour éviter les erreurs d'import de modules CommonJS.
+- Règle 12 : 📄 **INTÉGRITÉ DES FICHIERS JSON**. Les fichiers `package.json`, `tsconfig.json` et tout fichier `.json` DOIVENT être du JSON pur et valide. 
+  * **JAMAIS de commentaires** (`/** ... */`, `//`, `/* */`) dans un fichier JSON. Le format JSON ne supporte PAS les commentaires.
+  * **JAMAIS d'en-tête de traçabilité @SPEC-KIT-TASK** dans un fichier `.json`. L'en-tête de traçabilité du projet ne s'applique qu'aux fichiers `.ts`, `.tsx`, `.js`, `.jsx`.
+  * Le JSON doit commencer par `{{` et finir par `}}`, sans aucun autre caractère autour.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois séparer ta réponse en DEUX parties distinctes :
