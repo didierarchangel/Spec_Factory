@@ -54,10 +54,10 @@ Tu dois séparer ta réponse en DEUX parties distinctes :
 **PARTIE 1 : LE JSON D'ANALYSE**
 Tu dois fournir un JSON valide contenant les métadonnées de ton intervention.
 ```json
-{
+{{
   "resume": "Brève description des changements",
   "impact_fichiers": ["src/app.ts", "package.json"]
-}
+}}
 ```
 
 **PARTIE 2 : LE CODE GÉNÉRÉ (HORS DU JSON)**
@@ -67,10 +67,10 @@ Ne mets **JAMAIS** le code dans le JSON.
 
 # EXEMPLE DE RÉPONSE ATTENDUE (MODÈLE ABSOLU)
 ```json
-{
+{{
   "resume": "Création du serveur initial et package.json",
   "impact_fichiers": ["src/app.ts", "package.json"]
-}
+}}
 ```
 
 ```code
@@ -78,10 +78,10 @@ Ne mets **JAMAIS** le code dans le JSON.
 console.log("Hello World");
 
 // Fichier : package.json
-{
+{{
   "name": "my-app",
-  "scripts": {
+  "scripts": {{
     "test": "jest"
-  }
-}
+  }}
+}}
 ```
