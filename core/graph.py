@@ -576,9 +576,15 @@ class SpecGraphManager:
                 if not (target_dir / "node_modules").exists() or pkg_written:
                     logger.info(f"⏳ Installation des dépendances (npm install) dans {dir_name}...")
                     try:
-                        subprocess.run("npm install > nul 2>&1", shell=True, cwd=str(target_dir), timeout=180)
+                        # On capture la sortie pour pouvoir la fournir à l'agent de correction si ça échoue
+                        res_install = subprocess.run("npm install", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=180)
+                        if res_install.returncode != 0:
+                            logger.error(f"❌ npm install a échoué dans {dir_name}. stderr: {res_install.stderr[:200]}...")
+                            diagnostics.append(f"❌ ÉCHEC DE L'INSTALLATION (npm install) dans {dir_name} :\nSTDOUT: {res_install.stdout}\nSTDERR: {res_install.stderr}")
+                        else:
+                            logger.info(f"✅ npm install réussi dans {dir_name}.")
                     except Exception as e:
-                        diagnostics.append(f"❌ ERREUR lors de npm install dans {dir_name}: {str(e)}")
+                        diagnostics.append(f"❌ ERREUR CRITIQUE lors de npm install dans {dir_name}: {str(e)}")
                 
                 # 2. Détection de dépendances manquantes (npm ls)
                 logger.info(f"🔍 Vérification des dépendances dans {dir_name}...")
