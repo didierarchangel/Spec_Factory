@@ -26,6 +26,7 @@ from core.graph import SpecGraphManager
 from core.etapes import EtapeManager
 from core.constitution_manager import ConstitutionManager
 from utils.file_manager import FileManager
+from utils.scanner import SemanticScanner
 import re
 
 # Configuration des logs
@@ -52,6 +53,14 @@ def cli():
 def init(path, here):
     """Initialise l'arborescence complète du projet."""
     target_path = Path(".") if here else Path(path)
+    
+    # Détection de projet existant (si le dossier n'est pas vide)
+    existing_files = [f for f in target_path.glob('*') if f.name not in ['.git', '.speckit', '.gitignore', '.env', '.env.example']]
+    if existing_files:
+        click.echo(f"⚠️  ALERTE : Le dossier {target_path.absolute()} contient déjà des fichiers.")
+        click.echo("💡 Si vous souhaitez ajouter une fonctionnalité à ce projet existant,")
+        click.echo("💡 il est recommandé d'utiliser : speckit component \"votre demande\"")
+        click.echo("---")
     
     # Liste des dossiers à créer selon le protocole
     structure = [
@@ -342,8 +351,14 @@ def specify(prompt, provider, model):
                     if selected:
                         provider_name = selected[0]
         
-        provider_name = provider_name or "inconnu"
         click.echo(f"🧠 Analyse architecturale en cours avec l'IA ({provider_name})...")
+        
+        const_path = Path("Constitution/CONSTITUTION.md")
+        if const_path.exists() and const_path.stat().st_size > 0:
+            if not click.confirm("⚠️  Une CONSTITUTION existe déjà. Continuer écrasera vos règles actuelles. Voulez-vous continuer ?", default=False):
+                click.echo("🛑 Opération annulée. Utilisez `speckit component` pour amender la Constitution.")
+                return
+
         manager = ConstitutionManager(llm)
         manager.generate_constitution(prompt)
         click.echo("\n✅ CONSTITUTION GÉNÉRÉE dans `Constitution/CONSTITUTION.md`.")
@@ -356,6 +371,31 @@ def specify(prompt, provider, model):
             click.echo("💡 Veuillez activer votre clé API ou changer de modèle.\n")
         else:
             click.echo(f"❌ Erreur : {e}")
+
+@cli.command()
+@click.argument('prompt')
+@click.option('--provider', help="Provider IA spécifique")
+@click.option('--model', help="Nom du modèle spécifique")
+def component(prompt, provider, model):
+    """[DOCTRINE MAINT] Amende la Constitution et ajoute une nouvelle composante (Étape)."""
+    try:
+        llm = get_llm(provider, model)
+        click.echo("🔍 Scan sémantique du projet en cours...")
+        scanner = SemanticScanner()
+        semantic_map = scanner.generate_map()
+        
+        click.echo("🧠 Analyse de l'évolution architecturale...")
+        const_manager = ConstitutionManager(llm)
+        const_manager.amend_constitution(prompt, semantic_map)
+        
+        click.echo("🗺️ Mise à jour de la feuille de route (etapes.md)...")
+        etape_manager = EtapeManager(llm)
+        new_step = etape_manager.append_steps_from_constitution(semantic_map=semantic_map)
+        
+        click.echo(f"\n✅ NOUVELLE COMPOSANTE AJOUTÉE :\n{new_step}")
+        click.echo("\n👉 Prochaine étape : `speckit run --component ID` pour l'implémenter.")
+    except Exception as e:
+        click.echo(f"❌ Erreur : {e}")
 
 @cli.command()
 @click.option('--provider', help="Provider IA spécifique")
@@ -375,9 +415,19 @@ def plan(provider, model):
                         provider_name = selected[0]
 
         provider_name = provider_name or "inconnu"
-        click.echo(f"🗺️ Génération de la feuille de route avec l'IA ({provider_name})...")
+        click.echo("🔍 Scan sémantique du projet...")
+        scanner = SemanticScanner()
+        semantic_map = scanner.generate_map()
+
+        etapes_path = Path("Constitution/etapes.md")
+        if etapes_path.exists() and etapes_path.stat().st_size > 0:
+            if not click.confirm("⚠️  Une feuille de route (etapes.md) existe déjà. L'écraser ?", default=False):
+                click.echo("🛑 Opération annulée.")
+                return
+
+        click.echo(f"🗺️ Génération de la feuille de route intelligente avec l'IA ({provider_name})...")
         manager = EtapeManager(llm)
-        manager.generate_steps_from_constitution()
+        manager.generate_steps_from_constitution(semantic_map=semantic_map)
         click.echo("✅ FEUILLE DE ROUTE GÉNÉRÉE dans `Constitution/etapes.md`.")
         click.echo("👉 Prochaine étape : `speckit run --task ID` pour commencer l'implémentation.")
     except Exception as e:
@@ -416,12 +466,18 @@ def status():
             click.echo(f" - IA actives : {', '.join(ais)}")
 
 @cli.command()
-@click.option('--task', required=True, help="ID de la tâche à exécuter (ex: 01_01)")
+@click.option('--task', help="ID de la tâche à exécuter (ex: 01_01)")
+@click.option('--component', help="Alias pour --task, ID de la composante à exécuter")
 @click.option('--provider', help="Provider IA (laisssez vide pour utiliser le premier choix du projet)")
 @click.option('--model', help="Nom du modèle spécifique")
 @click.option('--instruction', help="Instruction supplémentaire guidant l'implémentation (ex: 'Ne touche pas au frontend')")
-def run(task, provider, model, instruction):
+def run(task, component, provider, model, instruction):
     """Exécute une tâche sous verrouillage de contexte et de concurrence."""
+    target_id = task or component
+    if not target_id:
+        click.echo("❌ ERREUR : Vous devez spécifier --task ou --component.")
+        return
+
     validator = SpecValidator()
     
     # 1. Vérification de l'intégrité globale
@@ -430,8 +486,8 @@ def run(task, provider, model, instruction):
         return
 
     # 2. Verrouillage de la tâche (Multi-IA safety)
-    if not validator.acquire_task_lock(task):
-        click.echo(f"🔒 La tâche {task} est déjà en cours d'exécution par une autre IA.")
+    if not validator.acquire_task_lock(target_id):
+        click.echo(f"🔒 La tâche {target_id} est déjà en cours d'exécution par une autre IA.")
         return
 
     try:
@@ -456,16 +512,17 @@ def run(task, provider, model, instruction):
         constitution_path = Path("Constitution/CONSTITUTION.md")
         constitution_content = constitution_path.read_text(encoding="utf-8") if constitution_path.exists() else ""
         
-        current_step = manager_etapes.get_next_pending_step() or "Inconnue"
+        # current_step = manager_etapes.get_next_pending_step() or "Inconnue"
+        current_step = target_id # On utilise l'ID cible directement
         
         # 4. Orchestration via le graphe
-        click.echo(f"🧠 Lancement du graphe d'orchestration pour : {task}")
+        click.echo(f"🧠 Lancement du graphe d'orchestration pour : {target_id}")
         graph_manager = SpecGraphManager(llm)
         
         # Auto-détection du contexte pour protéger les dossiers (Frontend vs Backend)
         auto_instruction = instruction or ""
         if not auto_instruction:
-            task_lower = task.lower()
+            task_lower = target_id.lower()
             # Détection explicite
             if "backend" in task_lower:
                 auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'frontend'. Concentre-toi exclusivement sur le backend. TOUS les chemins de fichiers backend doivent commencer par 'backend/' (ex: backend/src/app.ts, backend/package.json)."
@@ -476,7 +533,7 @@ def run(task, provider, model, instruction):
                 auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT (détecté automatiquement) : Cette tâche concerne le backend. Ne modifie AUCUN fichier frontend. TOUS les chemins de fichiers DOIVENT commencer par 'backend/' (ex: backend/src/app.ts, backend/package.json). Ne génère JAMAIS un chemin comme 'src/app.ts' sans le préfixe 'backend/'."
 
         # Extraction du checklist de sous-tâches pour l'auditeur
-        subtasks = manager_etapes.get_subtasks_for_step(task)
+        subtasks = manager_etapes.get_subtasks_for_step(target_id)
         subtask_checklist = "\n".join([f"- [ ] {st}" for st in subtasks]) if subtasks else "Aucune sous-tâche définie."
 
         initial_state = {
@@ -485,7 +542,7 @@ def run(task, provider, model, instruction):
             "current_step": current_step,
             "completed_tasks_summary": "Historique chargé via .spec-lock.json",
             "pending_tasks": "Voir etapes.md",
-            "target_task": task,
+            "target_task": target_id,
             "analysis_output": "",
             "code_to_verify": "",
             "validation_status": "",
@@ -547,8 +604,8 @@ def run(task, provider, model, instruction):
             synthesis += f"✅ Points forts : {final_state.get('points_forts', 'N/A')}\n"
             synthesis += f"⚠️ Alertes : {final_state.get('alertes', 'Aucune')}"
             
-            manager_etapes.mark_step_as_completed(task, synthesis=synthesis)
-            click.echo(f"✅ Tâche {task} marquée comme terminée dans etapes.md et archivée dans EtapesAdd.md")
+            manager_etapes.mark_step_as_completed(target_id, synthesis=synthesis)
+            click.echo(f"✅ Tâche {target_id} marquée comme terminée dans etapes.md et archivée dans EtapesAdd.md")
             
             # Mise à jour du verrou .spec-lock.json
             lock_file = Path(".spec-lock.json")
@@ -556,14 +613,14 @@ def run(task, provider, model, instruction):
                 try:
                     with open(lock_file, "r") as f:
                         data = json.load(f)
-                    if task not in data.get("completed_tasks", []):
-                        data.setdefault("completed_tasks", []).append(task)
+                    if target_id not in data.get("completed_tasks", []):
+                        data.setdefault("completed_tasks", []).append(target_id)
                     with open(lock_file, "w") as f:
                         json.dump(data, f, indent=4)
                 except Exception as e:
                     logger.error(f"Erreur lors de la mise à jour du lock : {e}")
             
-            click.echo(f"\n✨ Tâche {task} terminée avec succès.")
+            click.echo(f"\n✨ Tâche {target_id} terminée avec succès.")
         else:
             click.echo("\n" + "!"*50)
             click.echo("❌ ÉCHEC DE L'AUDIT")
@@ -583,7 +640,7 @@ def run(task, provider, model, instruction):
             logger.exception("Détails de l'erreur :")
     finally:
         # 5. Libération du verrou
-        validator.release_task_lock(task)
+        validator.release_task_lock(target_id)
 
 if __name__ == "__main__":
     cli()

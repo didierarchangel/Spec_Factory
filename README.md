@@ -43,6 +43,10 @@ speckit init --here
 
 # Étape 2 : Lancer une tâche sous verrouillage contextuel
 speckit run --task 03_02
+
+# CAS PROJET EXISTANT : Ajouter une fonctionnalité (Composante)
+speckit component "Ajouter un module de chat"
+speckit run --component 04_chat
 ```
 
 ---
@@ -81,6 +85,23 @@ Remplacez le contenu par **VOS VRAIS PRINCIPES**.
 speckit run --task 01_01
 ```
 L'agent d'exécution charge un contexte **strictement verrouillé** (Constitution + Etape + Architecture) pour s'assurer d'aligner le travail avec vos règles absolues.
+
+---
+
+## 🛠️ Travailler sur un Projet Existant (Mode Composante)
+
+Si vous utilisez Speckit sur un projet qui contient déjà du code, suivez ce workflow pour ne pas écraser votre travail :
+
+1. **Initialisez (si ce n'est pas fait)** : `speckit init --here`
+   *   Speckit détectera automatiquement si votre dossier n'est pas vide et vous guidera.
+2. **Ajoutez une fonctionnalité** : `speckit component "Ma demande"`
+   *   Speckit scanne votre code existant (**Semantic Code Map**).
+   *   Il amende la `CONSTITUTION.md` sans l'écraser.
+   *   Il génère une **feuille de route intelligente** : il analyse ce qui est déjà codé et marque ces étapes comme faites `[x]`, puis ajoute les nouvelles étapes nécessaires (en plusieurs étapes si la demande est complexe).
+3. **Exécutez** : `speckit run --component ID`
+
+> [!TIP]
+> Si vous utilisez `speckit plan` sur un projet existant, il sera également "intelligent" et ne vous proposera que les étapes réellement manquantes.
 
 ---
 

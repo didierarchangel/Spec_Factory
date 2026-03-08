@@ -22,7 +22,7 @@ class EtapeManager:
         self.etapes_path = self.root / "Constitution" / "etapes.md"
         self.history_path = self.root / "Constitution" / "EtapesAdd.md"
 
-    def generate_steps_from_constitution(self) -> str:
+    def generate_steps_from_constitution(self, semantic_map: str = "") -> str:
         """Analyse la Constitution pour définir les étapes du projet avec des sous-tâches détaillées."""
         if not self.constitution_path.exists():
             raise FileNotFoundError(
@@ -30,26 +30,38 @@ class EtapeManager:
             )
 
         constitution_content = self.constitution_path.read_text(encoding="utf-8")
+        existing_plan = ""
+        if self.etapes_path.exists():
+            existing_plan = self.etapes_path.read_text(encoding="utf-8")
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", """Tu es un chef de projet DevOps expert. Basé sur la CONSTITUTION fournie,
+            ("system", """Tu es un chef de projet DevOps expert. Basé sur la CONSTITUTION fournie, l'état actuel du code (SEMANTIC MAP) et le PLAN EXISTANT,
             découpe le projet en étapes techniques majeures (ex: 01, 02, 03).
-            Chaque étape doit contenir une liste de sous-tâches atomiques et actionnables.
+            
+            Tu DOIS :
+            1. Comparer la Constitution avec la SEMANTIC MAP et le PLAN EXISTANT.
+            2. Générer la liste COMPLÈTE des étapes nécessaires pour tout le projet (historique inclus).
+            3. PRÉSERVER le statut [x] pour toutes les étapes et sous-tâches déjà marquées comme terminées dans le PLAN EXISTANT.
+            4. Marquer [x] les nouvelles étapes ou sous-tâches si elles sont détectées comme déjà présentes dans la SEMANTIC MAP.
+            5. Découper le reste en étapes atomiques avec des sous-tâches actionnables.
             
             Format de sortie STRICT :
-            ## [ ] 01_nom_etape : Titre de l'étape
-            - [ ] Sous-tâche 1 (ex: Créer le dossier src)
-            - [ ] Sous-tâche 2 (ex: Configurer tsconfig.json)
+            ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
+            - [x] Sous-tâche déjà faite
             
-            ## [ ] 02_nom_etape : Titre de l'étape
-            - [ ] Sous-tâche 1
+            ## [ ] 02_nom_etape : Titre (Nouvelle étape à faire)
+            - [ ] Sous-tâche à réaliser
             
             IMPORTANT : Les IDs d'étape (01_nom_etape) doivent être courts, sans espaces, et utiliser des underscores."""),
-            ("user", "{content}")
+            ("user", "CONSTITUTION :\n{content}\n\nSEMANTIC MAP (État du code actuel) :\n{semantic_map}\n\nPLAN EXISTANT (etapes.md actuel) :\n{existing_plan}")
         ])
 
         chain = prompt | self.model | StrOutputParser()
-        steps = chain.invoke({"content": constitution_content})
+        steps = chain.invoke({
+            "content": constitution_content, 
+            "semantic_map": semantic_map,
+            "existing_plan": existing_plan
+        })
 
         self.etapes_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.etapes_path, "w", encoding="utf-8") as f:
@@ -59,6 +71,48 @@ class EtapeManager:
 
         logger.info("Fichier etapes.md généré avec succès avec un format granulaire.")
         return steps
+
+    def append_steps_from_constitution(self, semantic_map: str = "") -> str:
+        """Analyse la Constitution pour ajouter uniquement les nouvelles étapes (Composantes) à la feuille de route."""
+        if not self.constitution_path.exists():
+            raise FileNotFoundError(f"CONSTITUTION.md introuvable.")
+
+        constitution_content = self.constitution_path.read_text(encoding="utf-8")
+        existing_etapes = ""
+        if self.etapes_path.exists():
+            existing_etapes = self.etapes_path.read_text(encoding="utf-8")
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """Tu es un chef de projet DevOps. Ta mission est d'extraire la NOUVELLE fonctionnalité
+            ajoutée à la Constitution et de la transformer en une ou plusieurs ÉTAPES TECHNIQUES à la suite du plan existant.
+            
+            Tu reçois :
+            1. La CONSTITUTION amendée.
+            2. Le plan d'étapes actuel (etapes.md).
+            3. La SEMANTIC MAP (état actuel des fichiers).
+            
+            Tu DOIS :
+            - Identifier ce qui est nouveau dans la Constitution par rapport au plan actuel et au code existant.
+            - Créer une ou plusieurs étapes (ex: ## [ ] 04_nouveau_module) si la fonctionnalité est complexe.
+            - Ne pas répéter les étapes déjà présentes dans le plan actuel.
+            - Marquer [x] les sous-tâches ou fichiers déjà détectés dans la Semantic Map.
+            - RÉPONDRE UNIQUEMENT AVEC LE BLOC DES NOUVELLES ÉTAPES (format Markdown ## [ ] id : titre)."""),
+            ("user", "CONSTITUTION :\n{const}\n\nPLAN ACTUEL :\n{etapes}\n\nSEMANTIC MAP :\n{semantic_map}")
+        ])
+
+        chain = prompt | self.model | StrOutputParser()
+        new_steps = chain.invoke({
+            "const": constitution_content, 
+            "etapes": existing_etapes,
+            "semantic_map": semantic_map
+        })
+
+        # Append to etapes.md
+        with open(self.etapes_path, "a", encoding="utf-8") as f:
+            f.write("\n\n" + new_steps)
+
+        logger.info("Nouvelles étapes ajoutées à etapes.md")
+        return new_steps
 
     def get_next_pending_step(self) -> str | None:
         """Récupère la première étape non cochée [ ] dans etapes.md."""

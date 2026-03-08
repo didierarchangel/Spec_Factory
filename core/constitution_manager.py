@@ -76,3 +76,44 @@ class ConstitutionManager:
 
         logger.info(f"Constitution générée dans {self.constitution_path}")
         return content
+
+    def amend_constitution(self, user_request: str, semantic_map: str) -> str:
+        """Amende la Constitution existante (ou la crée) pour ajouter une nouvelle fonctionnalité."""
+        logger.info("Analyse de la demande technique pour amendement de la Constitution...")
+        
+        existing_content = ""
+        if self.constitution_path.exists():
+            existing_content = self.constitution_path.read_text(encoding="utf-8")
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """Tu es l'Architecte de Maintenance de Speckit.Factory.
+            Ta mission est d'amender une CONSTITUTION existante pour y intégrer une nouvelle COMPOSANTE (Fonctionnalité).
+            
+            Tu reçois :
+            1. La CONSTITUTION actuelle (si elle existe).
+            2. Un SEMANTIC CODE MAP (scan du projet réel).
+            3. La demande de nouvelle fonctionnalité.
+            
+            Tu DOIS :
+            - Respecter les standards de code et l'architecture déjà définis dans la Constitution.
+            - Ajouter les nouvelles sections nécessaires (Models, Routes, UI) pour cette fonctionnalité.
+            - Ne jamais supprimer les règles de sécurité ou de stack existantes.
+            - Si la Constitution n'existait pas, crée-la en te basant sur le Semantic Code Map pour déduire la stack.
+            
+            RÉPONDS UNIQUEMENT AVEC LE CONTENU COMPLET DU NOUVEAU FICHIER CONSTITUTION.MD."""),
+            ("user", "CONSTITUTION ACTUELLE :\n{existing}\n\nSEMANTIC CODE MAP :\n{semantic_map}\n\nNOUVELLE DEMANDE : {request}")
+        ])
+
+        chain = prompt | self.model | StrOutputParser()
+        content = chain.invoke({
+            "existing": existing_content, 
+            "semantic_map": semantic_map,
+            "request": user_request
+        })
+
+        self.constitution_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.constitution_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        logger.info(f"Constitution amendée dans {self.constitution_path}")
+        return content
