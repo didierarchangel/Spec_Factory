@@ -11,6 +11,16 @@
 
 **Speckit.Factory** est un framework **Constitutional DevOps AI** conçu pour gérer le cycle de vie complet de votre développement, de l'architecture aux tâches techniques, tout en garantissant le respect de vos principes fondamentaux (Constitution).
 
+---
+
+### 🎨 La Spécialité Speckit.Factory : Design & Monitoring
+
+L'une des grandes forces de Speckit.Factory réside dans son architecture multi-agents :
+1. **Agent Designer (GraphicDesign)** : En amont de l'implémentation, un agent spécialisé transforme votre intention UI en spécifications visuelles "Premium" (systèmes Material ou PRONANUT).
+2. **Monitoring & Audit** : Le framework ne se contente pas de générer du code ; il monitore en temps réel l'exécution du LLM, s'assurant que chaque ligne produite respecte scrupuleusement votre Constitution et vos standards de qualité.
+
+---
+
 **Voici comment ça marche:**
 
 ```text
