@@ -1,4 +1,4 @@
-# Le "Cerveau" du Spec-Kit
+# Le "Cerveau" du Spec-Kit (LE WORKFLOW DE CHAINAGE, LE PIPELINE, LE ROADMAP)
 # Implémentation du graphe de routage LangGraph
 # Ce module orchestre l'interaction entre les sous-agents (Analyse, Implémentation, Vérification)
 
@@ -16,12 +16,13 @@ from core.GraphicDesign import GraphicDesign
 
 logger = logging.getLogger(__name__)
 
-# ─── 1. État du graphe (Mémoire partagée) ─────────────────────────────
+# ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
 
 class AgentState(TypedDict):
     # Variables de contexte partagées (générées une seule fois)
     constitution_hash: str
     constitution_content: str
+
     current_step: str
     completed_tasks_summary: str
     pending_tasks: str
@@ -361,7 +362,9 @@ class SpecGraphManager:
                 "code_to_verify": state["code_to_verify"],
                 "terminal_diagnostics": state.get("terminal_diagnostics", "N/A"),
                 "user_instruction": state.get("user_instruction", ""),
-                "subtask_checklist": subtask_checklist,
+                "subtask_checklist": state["subtask_checklist"],
+                "file_tree": state["file_tree"],
+                "code_map": state["code_map"],
                 "format_instructions": parser.get_format_instructions()
             })
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
