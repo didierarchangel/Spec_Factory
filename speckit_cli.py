@@ -378,24 +378,49 @@ def specify(prompt, provider, model):
         # Résolution du nom du provider pour l'affichage
         provider_name = provider
         if not provider_name:
-            lock_file = Path(".spec-lock.json")
-            if lock_file.exists():
-                with open(lock_file, "r") as f:
+            lock_file_path = Path(".spec-lock.json")
+            if lock_file_path.exists():
+                with open(lock_file_path, "r") as f:
                     data = json.load(f)
                     selected = data.get("selected_ais", [])
                     if selected:
                         provider_name = selected[0]
-        
-        click.echo(f"🧠 Analyse architecturale en cours avec l'IA ({provider_name})...")
-        
+
+        # 1. Sélection interactive du Design Style
+        design_choices = {
+            "1": "Standard",
+            "2": "premium"
+        }
+        click.echo("\n🏗️  Style de Design pour ce projet :")
+        for k, v in design_choices.items(): click.echo(f" {k}) {v}")
+        d_choice = click.prompt("Votre choix de Design", default="1", type=click.Choice(list(design_choices.keys())))
+        selected_design = design_choices[d_choice]
+
+        # 2. Vérification de la Constitution
         const_path = Path("Constitution/CONSTITUTION.md")
         if const_path.exists() and const_path.stat().st_size > 0:
             if not click.confirm("⚠️  Une CONSTITUTION existe déjà. Continuer écrasera vos règles actuelles. Voulez-vous continuer ?", default=False):
                 click.echo("🛑 Opération annulée. Utilisez `speckit component` pour amender la Constitution.")
                 return
 
+        # 3. Synchronisation du Lock File (pour les futurs agents)
+        lock_file_path = Path(".spec-lock.json")
+        if lock_file_path.exists():
+            try:
+                with open(lock_file_path, "r", encoding="utf-8") as f:
+                    lock_data = json.load(f)
+                if "stack_preferences" not in lock_data:
+                    lock_data["stack_preferences"] = {}
+                lock_data["stack_preferences"]["design"] = selected_design
+                with open(lock_file_path, "w", encoding="utf-8") as f:
+                    json.dump(lock_data, f, indent=4)
+            except Exception as e:
+                click.echo(f"⚠️ Impossible de mettre à jour le lock file : {e}")
+
+        # 4. Génération de la Constitution
+        click.echo(f"🧠 Analyse architecturale en cours avec l'IA ({provider_name})...")
         manager = ConstitutionManager(llm)
-        manager.generate_constitution(prompt)
+        manager.generate_constitution(prompt, design_style=selected_design)
         click.echo("\n✅ CONSTITUTION GÉNÉRÉE dans `Constitution/CONSTITUTION.md`.")
         click.echo("👉 Veuillez la valider ou la modifier manuellement avant l'étape suivante.")
         click.echo("👉 Prochaine étape : `speckit plan` pour générer la feuille de route.")

@@ -15,9 +15,9 @@ class ConstitutionManager:
         # Charger le template de base
         self.template_path = Path(__file__).parent / "templates" / "CONSTITUTION.template.md"
 
-    def generate_constitution(self, user_request: str) -> str:
+    def generate_constitution(self, user_request: str, design_style: str = "Standard") -> str:
         """Produit la Constitution (Architecture, Standards, Stack) à partir d'une demande utilisateur."""
-        logger.info("Analyse de la demande utilisateur pour génération de Constitution...")
+        logger.info(f"Analyse de la demande utilisateur avec style de design {design_style}...")
         
         # Charger les préférences de stack depuis le lock
         lock_file = self.root / ".spec-lock.json"
@@ -48,7 +48,9 @@ class ConstitutionManager:
                - Note : Si Node.js et TypeScript sont choisis pour le Backend, tu DOIS impérativement préciser la configuration : `Node.js 20, TypeScript (Configuration : CommonJS, Target: ES2022)`. Cela empêchera l'Auditeur d'exiger des ES Modules.
             3. Les Standards de Code (Naming, Security).
             4. Le Schéma de Données (si applicable).
-            5. Design Intelligence : Tu DOIS impérativement inclure la section "DESIGN CONSTITUTION" et mentionner l'agent `GraphicDesign`, ainsi que les systèmes `Standard-Tailwind` et `premium` (Premium).
+            5. Design Intelligence : Tu DOIS impérativement inclure la section "DESIGN CONSTITUTION".
+               IMPORTANT : Tu DOIS imposer le système de design suivant : {design_style}. 
+               Mentionne explicitement l'agent `GraphicDesign` et détaille les principes propres à {design_style}.
             6. L'Outillage et les Tests : Tu DOIS impérativement inclure Jest, Supertest (Backend) et Vitest (Frontend si Vite). Ne les oublie pas !
 
             ATTENTION AU FORMATAGE MARKDOWN :
@@ -67,7 +69,8 @@ class ConstitutionManager:
         content = chain.invoke({
             "template": base_template, 
             "request": user_request,
-            "stack_info": stack_info
+            "stack_info": stack_info,
+            "design_style": design_style
         })
 
         # Sauvegarde
