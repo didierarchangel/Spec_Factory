@@ -631,25 +631,17 @@ def run(task, component, provider, model, instruction):
         
         # current_step = manager_etapes.get_next_pending_step() or "Inconnue"
         current_step = target_id # On utilise l'ID cible directement
+
+        # Scan structure projet
+        scanner = SemanticScanner()
+        semantic_map = scanner.generate_map()
+        file_tree = scanner.get_file_tree() 
         
         # 4. Orchestration via le graphe
         click.echo(f"🧠 Lancement du graphe d'orchestration pour : {target_id}")
-        graph_manager = SpecGraphManager(llm)
+        graph_manager = SpecGraphManager(llm) 
         
-        # Auto-détection du contexte pour protéger les dossiers (Frontend vs Backend)
-        auto_instruction = instruction or ""
-        if not auto_instruction:
-            task_lower = target_id.lower()
-            # Détection explicite
-            if "backend" in task_lower:
-                auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'frontend'. Concentre-toi exclusivement sur le backend. TOUS les chemins de fichiers backend doivent commencer par 'backend/' (ex: backend/src/app.ts, backend/package.json)."
-            elif "frontend" in task_lower:
-                auto_instruction = "⚠️ CONTEXTE FRONTEND UNIQUEMENT : Ne modifie, ne crée et n'analyse AUCUN fichier du dossier 'backend'. Concentre-toi exclusivement sur le frontend. TOUS les chemins de fichiers frontend doivent commencer par 'frontend/' (ex: frontend/src/App.tsx, frontend/package.json)."
-            # Détection implicite par mots-clés métier (backend par défaut si pas frontend)
-            elif any(kw in task_lower for kw in ['jwt', 'auth', 'modele', 'model', 'route', 'service', 'crud', 'api', 'middleware', 'database', 'mongo', 'passport']):
-                auto_instruction = "⚠️ CONTEXTE BACKEND UNIQUEMENT (détecté automatiquement) : Cette tâche concerne le backend. Ne modifie AUCUN fichier frontend. TOUS les chemins de fichiers DOIVENT commencer par 'backend/' (ex: backend/src/app.ts, backend/package.json). Ne génère JAMAIS un chemin comme 'src/app.ts' sans le préfixe 'backend/'."
-
-        # Extraction du checklist de sous-tâches pour l'auditeur
+        # Extraction du checklist de sous-tâches
         subtasks = manager_etapes.get_subtasks_for_step(target_id)
         subtask_checklist = "\n".join([f"- [ ] {st}" for st in subtasks]) if subtasks else "Aucune sous-tâche définie."
 
@@ -668,7 +660,9 @@ def run(task, component, provider, model, instruction):
             "error_count": 0,
             "last_error": "",
             "user_instruction": auto_instruction,
-            "subtask_checklist": subtask_checklist
+            "subtask_checklist": subtask_checklist,
+            "code_map": semantic_map,
+            "file_tree": file_tree
         }
         
         # Exécution du graphe

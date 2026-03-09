@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, START, END
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput
+from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput, SubagentTaskEnforcerOutput
 from langchain_core.output_parsers import JsonOutputParser
 from core.GraphicDesign import GraphicDesign
 
@@ -53,6 +53,9 @@ class AgentState(TypedDict):
     # Carte sémantique du code (Semantic Code Map)
     code_map: str
     file_tree: str
+    
+    # Checklist des sous-tâches
+    subtask_checklist: str
 
 
 class SpecGraphManager:
@@ -404,6 +407,38 @@ class SpecGraphManager:
                 "error_count": new_error_count,
                 "last_error": error_msg
             }
+
+    def task_enforcer_node(self, state: AgentState) -> dict:
+        """Nœud de vérification structurelle : S'assure que tous les fichiers demandés sont là."""
+        logger.info("🛡️ Vérification de la présence des fichiers (TaskEnforcer)...")
+        
+        prompt_text = self._load_prompt("subagent_Speckit-TaskEnforcer.prompt")
+        parser = JsonOutputParser(pydantic_object=SubagentTaskEnforcerOutput)
+        prompt_text += "\n\n{format_instructions}"
+        
+        prompt = ChatPromptTemplate.from_template(prompt_text)
+        chain = prompt | self.model | StrOutputParser()
+        
+        try:
+            raw_output = chain.invoke({
+                "subtask_checklist": state.get("subtask_checklist", ""),
+                "file_tree": state.get("file_tree", ""),
+                "format_instructions": parser.get_format_instructions()
+            })
+            result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
+            
+            if result["verdict"] == "CONFORME":
+                logger.info("✅ Structure conforme (aucun fichier manquant).")
+                return {"validation_status": "STRUCTURE_OK", "feedback_correction": ""}
+            else:
+                logger.warning(f"❌ Structure NON-CONFORME. Fichiers manquants : {', '.join(result['missing_files'])}")
+                return {
+                    "validation_status": "STRUCTURE_KO",
+                    "feedback_correction": f"FICHIERS MANQUANTS DÉTECTÉS : {', '.join(result['missing_files'])}. {result['explication']}"
+                }
+        except Exception as e:
+            logger.error(f"❌ Erreur critique TaskEnforcer : {str(e)}")
+            return {"validation_status": "STRUCTURE_KO", "feedback_correction": f"TaskEnforcer Error: {str(e)}"}
 
     def code_map_node(self, state: AgentState) -> dict:
         """Nœud de génération de la Semantic Code Map."""
@@ -786,10 +821,26 @@ class SpecGraphManager:
             self.route_after_diagnostic,
             {
                 "buildfix_node": "buildfix_node",
-                "verify_node": "verify_node"
+                "verify_node": "task_enforcer_node" # On passe par l'Enforcer avant l'Audit
             }
         )
         self.graph_builder.add_edge("buildfix_node", "diagnostic_node") # Boucle pour vérifier la correction
+
+        # Routage après TaskEnforcer
+        def route_after_enforcer(state: AgentState) -> str:
+            if state.get("validation_status") == "STRUCTURE_OK":
+                return "verify_node"
+            return "impl_node" # On renvoie à l'implémenteur pour générer les fichiers manquants
+
+        self.graph_builder.add_node("task_enforcer_node", self.task_enforcer_node)
+        self.graph_builder.add_conditional_edges(
+            "task_enforcer_node",
+            route_after_enforcer,
+            {
+                "verify_node": "verify_node",
+                "impl_node": "impl_node"
+            }
+        )
 
         # Branchement conditionnel (Boucle de correction finale / Audit)
         self.graph_builder.add_conditional_edges(

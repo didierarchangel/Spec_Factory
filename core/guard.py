@@ -39,7 +39,7 @@ class SubagentImplOutput(BaseModel):
 
 class SubagentVerifyOutput(BaseModel):
     """Schéma de sortie attendu pour subagent_verify.prompt."""
-    score_conformite: str = Field(description="Score sur 10 (ex: '9/10').")
+    score_conformite: int = Field(description="Score sur 100 (ex: 95). Doit être 100 pour APPROUVÉ.")
     points_forts: str = Field(description="Ce qui est bien réalisé.")
     alertes: str = Field(description="Écarts avec la Constitution ou failles. Ou 'Aucune alerte.'")
     verdict_final: str = Field(description="Doit être STRICTEMENT 'APPROUVÉ' ou 'REJETÉ'.")
