@@ -386,15 +386,40 @@ def specify(prompt, provider, model):
                     if selected:
                         provider_name = selected[0]
 
-        # 1. Sélection interactive du Design Style
-        design_choices = {
-            "1": "Standard",
-            "2": "premium"
-        }
-        click.echo("\n🏗️  Style de Design pour ce projet :")
-        for k, v in design_choices.items(): click.echo(f" {k}) {v}")
-        d_choice = click.prompt("Votre choix de Design", default="1", type=click.Choice(list(design_choices.keys())))
-        selected_design = design_choices[d_choice]
+        # 1. Résolution du Design Style (Priorité : Lockfile > Prompt interactif)
+        selected_design = None
+        lock_file_path = Path(".spec-lock.json")
+        
+        if lock_file_path.exists():
+            try:
+                with open(lock_file_path, "r", encoding="utf-8") as f:
+                    lock_data = json.load(f)
+                    selected_design = lock_data.get("stack_preferences", {}).get("design")
+            except:
+                pass
+
+        if not selected_design:
+            design_choices = {
+                "1": "Standard",
+                "2": "premium"
+            }
+            click.echo("\n🏗️  Style de Design pour ce projet :")
+            for k, v in design_choices.items(): click.echo(f" {k}) {v}")
+            d_choice = click.prompt("Votre choix de Design", default="1", type=click.Choice(list(design_choices.keys())))
+            selected_design = design_choices[d_choice]
+            
+            # Sauvegarde immédiate dans le lock si on a dû demander
+            if lock_file_path.exists():
+                try:
+                    with open(lock_file_path, "r", encoding="utf-8") as f:
+                        lock_data = json.load(f)
+                    if "stack_preferences" not in lock_data:
+                        lock_data["stack_preferences"] = {}
+                    lock_data["stack_preferences"]["design"] = selected_design
+                    with open(lock_file_path, "w", encoding="utf-8") as f:
+                        json.dump(lock_data, f, indent=4)
+                except:
+                    pass
 
         # 2. Vérification de la Constitution
         const_path = Path("Constitution/CONSTITUTION.md")
