@@ -36,7 +36,18 @@ Prends en compte les éléments suivants pour ton analyse :
 - Règle 3 : Tu ne peux PAS proposer une architecture différente de celle validée. Si une technologie est imposée (ex: React, FastAPI), tu dois t'y tenir.
 - Règle 4 : Précision de Configuration. Si la tâche implique des fichiers de configuration (TSConfig, ESLint, Vite), utilise des patterns standards. (ex: "include": ["src/**/*"]). Évite les globs trop restrictifs qui cassent le build (ex: ne jamais limiter à *.spec.ts si le projet a besoin de compiler tout le dossier src).
 
-# INSTRUCTIONS DE SORTIE
-Tu dois impérativement respecter le schéma JSON fourni. 
-Ne rajoute pas de texte d'introduction ou de conclusion.
+# INSTRUCTIONS DE SORTIE (IMPÉRATIF)
+Tu dois impérativement respecter le schéma JSON fourni.
+Tu dois répondre STRICTEMENT au format suivant, sans aucun texte avant ou après :
+
+<JSON_OUTPUT>
+{{
+  "impact": "...",
+  "conflits": "...",
+  "segmentation": ["..."],
+  "alerte_integrite": "..."
+}}
+</JSON_OUTPUT>
+
+Interdiction de mettre du markdown ou des explications en dehors des balises <JSON_OUTPUT>.
 Ton analyse doit être technique, précise et sans concession.

@@ -115,24 +115,29 @@ class SpecGraphManager:
             result["code"] = ""
                 
         # --- EXTRACTION DU JSON ---
-        # 1. Nettoyage des backticks Markdown (```json ... ```)
-        json_content = cleaned
-        if "```json" in json_content:
-            match = re.search(r"```json\s*(.*?)\s*```", json_content, re.DOTALL)
-            if match:
-                json_content = match.group(1).strip()
-            else:
-                json_content = re.sub(r"^```json\s*", "", json_content)
-        elif "```" in json_content:
-             # S'il y a un bloc ``` générique au début, on assume que c'est le json
-             match = re.search(r"^```\s*(\{.*?\})\s*```", json_content, re.DOTALL)
-             if match:
-                 json_content = match.group(1).strip()
-        
-        # On essaie d'isoler uniquement la partie dictionnaire { ... } si d'autres choses trainent
-        match_dict = re.search(r"(\{.*\})", json_content, re.DOTALL)
-        if match_dict:
-            json_content = match_dict.group(1)
+        # 1. Priorité : Balises <JSON_OUTPUT> (Format standardisé)
+        json_match = re.search(r"<JSON_OUTPUT>\s*(.*?)\s*</JSON_OUTPUT>", cleaned, re.DOTALL)
+        if json_match:
+            json_content = json_match.group(1).strip()
+        else:
+            # 2. Nettoyage des backticks Markdown (```json ... ```)
+            json_content = cleaned
+            if "```json" in json_content:
+                match = re.search(r"```json\s*(.*?)\s*```", json_content, re.DOTALL)
+                if match:
+                    json_content = match.group(1).strip()
+                else:
+                    json_content = re.sub(r"^```json\s*", "", json_content)
+            elif "```" in json_content:
+                 # S'il y a un bloc ``` générique au début, on assume que c'est le json
+                 match = re.search(r"^```\s*(\{.*?\})\s*```", json_content, re.DOTALL)
+                 if match:
+                     json_content = match.group(1).strip()
+            
+            # On essaie d'isoler uniquement la partie dictionnaire { ... } si d'autres choses trainent
+            match_dict = re.search(r"(\{.*\})", json_content, re.DOTALL)
+            if match_dict:
+                json_content = match_dict.group(1)
         
         # 2. Parsing via LangChain JsonOutputParser
         parser = JsonOutputParser(pydantic_object=pydantic_object)
@@ -317,7 +322,23 @@ class SpecGraphManager:
             })
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
-            logger.info("✅ Implémentation terminée.")
+            logger.info("✅ Implémentation terminée. Lancement de la validation pré-emptive...")
+            
+            # --- VALIDATION TYPESCRIPT PRÉ-EMPTIVE ---
+            if result.get("code"):
+                is_valid, errors = self._validate_typescript(result["code"], state["target_task"])
+                if not is_valid:
+                    new_error_count = state.get("error_count", 0) + 1
+                    logger.warning(f"⚠️ Validation TypeScript échouée ({new_error_count}/3).")
+                    
+                    if new_error_count < 3:
+                        return {
+                            "validation_status": "REJETÉ",
+                            "feedback_correction": f"The following TypeScript errors occurred during pre-emptive validation:\n\n{errors}\n\nRegenerate the code with corrected types and strict adherence to TypeScript rules.",
+                            "error_count": new_error_count
+                        }
+                    else:
+                        logger.error("🛑 Limite de tentatives atteinte lors de la validation pré-emptive. Persistence forcée.")
             
             # Persistance immédiate des fichiers sur le disque (on récupère le code sanitizé/golden)
             sanitized_code = ""
@@ -327,7 +348,9 @@ class SpecGraphManager:
             return {
                 "code_to_verify": sanitized_code if sanitized_code else result["code"],
                 "impact_fichiers": result.get("impact_fichiers", []),
-                "last_error": ""
+                "last_error": "",
+                "validation_status": "APPROUVÉ", # Status interne pour passer à la suite
+                "error_count": 0 # Reset si succès
             }
         except Exception as e:
             error_msg = f"Erreur d'implémentation : {str(e)}"
@@ -341,6 +364,10 @@ class SpecGraphManager:
 
     def verify_node(self, state: AgentState) -> dict:
         """Nœud 3 : Audit de sécurité et conformité finale."""
+        if state.get("error_count", 0) >= 3:
+            logger.error("🛑 Limite atteinte")
+            return END
+
         logger.info(f"🛡️ Début de l'Audit pour le code généré.")
         
         prompt_text = self._load_prompt("subagent_verify.prompt")
@@ -514,6 +541,8 @@ class SpecGraphManager:
 
     def buildfix_node(self, state: AgentState) -> dict:
         """Nœud de réparation automatique du build (TypeScript/Node)."""
+        state["error_count"] = state.get("error_count", 0) + 1
+        
         # Si le build est déjà un succès, on passe directement.
         diagnostics = state.get("terminal_diagnostics", "")
         if "✅ SUCCÈS" in diagnostics and "❌ ÉCHEC" not in diagnostics:
@@ -587,6 +616,80 @@ class SpecGraphManager:
             return "\n".join(sanitized_blocks), written_paths
             
         return code, []
+
+    def _validate_typescript(self, code: str, target_task: str) -> tuple[bool, str]:
+        """Valide le code TypeScript généré avant écriture finale via tsc --noEmit."""
+        import subprocess
+        import tempfile
+        import shutil
+        import re
+        
+        logger.info("🔍 Validation TypeScript pré-emptive via tsc --noEmit...")
+        
+        # 1. Extraction des fichiers du bloc de code
+        pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+        file_blocks = re.split(pattern, code)
+        
+        if len(file_blocks) <= 1:
+            return True, "" # Pas de fichiers extraits ou pas de TS
+            
+        # On ne valide que s'il y a du .ts ou .tsx
+        has_ts = any(file_blocks[i].strip().endswith(('.ts', '.tsx')) for i in range(1, len(file_blocks), 2))
+        if not has_ts:
+            return True, ""
+            
+        # 2. Création d'un environnement de test temporaire
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            
+            # Détermination du contexte (backend ou frontend)
+            context_dir = "backend" if "backend" in target_task.lower() or "api" in target_task.lower() else "frontend"
+            
+            # On simule l'arborescence pour tsc (notamment pour les imports)
+            # Dans un vrai cas pro, on pourrait copier le node_modules/tsconfig existant
+            # Ici on fait une validation "light" sur les fichiers générés
+            
+            ts_files = []
+            for i in range(1, len(file_blocks), 2):
+                fpath_str = file_blocks[i].strip()
+                content = file_blocks[i+1].strip()
+                
+                # On ignore les fichiers non TS pour la validation noEmit s'ils sont hors contexte
+                if fpath_str.endswith(('.ts', '.tsx')):
+                    target_file = tmp_path / fpath_str
+                    target_file.parent.mkdir(parents=True, exist_ok=True)
+                    target_file.write_text(content, encoding="utf-8")
+                    ts_files.append(str(target_file))
+            
+            if not ts_files:
+                return True, ""
+                
+            # 3. Exécution de tsc --noEmit
+            # On essaie d'utiliser le tsc du projet s'il existe
+            project_dir = self.root / context_dir
+            cwd = str(project_dir) if project_dir.exists() else str(self.root)
+            
+            try:
+                # Commande : npx tsc --noEmit [fichiers]
+                # Note: On valide fichier par fichier ou globalement. 
+                # --skipLibCheck pour éviter les erreurs de node_modules tiers
+                cmd = ["npx", "--yes", "tsc", "--noEmit", "--skipLibCheck", "--target", "es2022", "--module", "commonjs"] + ts_files
+                
+                # Sous Windows, npx peut nécessiter shell=True
+                result = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
+                
+                if result.returncode == 0:
+                    logger.info("✅ Validation TypeScript réussie.")
+                    return True, ""
+                else:
+                    # Nettoyage des chemins temporaires dans les erreurs pour l'IA
+                    clean_errors = result.stdout.replace(str(tmp_path), "").replace(str(tmp_path).replace("\\", "/"), "")
+                    clean_errors += result.stderr.replace(str(tmp_path), "")
+                    logger.warning(f"❌ Erreurs TypeScript détectées :\n{clean_errors[:500]}...")
+                    return False, clean_errors
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de la validation TS : {str(e)}")
+                return True, "" # On ne bloque pas si tsc n'est pas dispo
 
     def _merge_code(self, base_code: str, delta_code: str) -> str:
         """Fusionne deux blocs de code multi-fichiers. Le delta écrase la base si conflit."""

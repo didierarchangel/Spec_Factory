@@ -249,6 +249,11 @@ Règle 11 : CONVENTION DTO / ZOD (STRICTE)
 2.  **Validation** : La fonction `validate()` utilisée dans les contrôleurs attend TOUJOURS l'objet Zod (`camelCase`).
 3.  **Imports** : Lorsque tu implémentes un contrôleur, vérifie que tu as importé les DEUX (le Type pour le typage Express, et l'Objet pour la validation).
 
+# RÈGLE 11.1 : RÈGLES TYPESCRIPT STRICTES (ZÉRO ERREUR TSC)
+- **INTERDICTION de `any`** : Toutes les variables, paramètres et retours doivent être explicitement typés.
+- **MIDDLEWARE EXPRESS** : Un middleware ne doit JAMAIS retourner une `Response`. Il doit retourner `void`. L'envoi dune réponse (`res.send`, `res.json`) interrompt le flux mais le type de retour de la fonction doit rester `void`.
+- **IMPORTS RÉELS** : Tous les imports de fichiers internes doivent correspondre à des fichiers existants dans la {code_map} ou créés dans cette tâche.
+- **TYPES GLOBAUX** : Utilise les types de la Constitution pour les entités et les DTOs.
 
 Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 
@@ -331,29 +336,33 @@ Avant de produire un fichier JSON :
 
 Si le JSON n'est pas valide, reconstruire le fichier.
 
-# INSTRUCTIONS DE SORTIE
+# INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 
 Tu dois répondre en DEUX parties.
 
-PARTIE 1 : JSON D'ANALYSE
-```json
+**PARTIE 1 : JSON D'ANALYSE (OBLIGATOIRE)**
+
+Tu dois répondre STRICTEMENT au format suivant, sans aucun texte avant ou après le bloc :
+
+<JSON_OUTPUT>
 {{
   "resume": "Brève description des changements",
   "impact_fichiers": ["backend/src/app.ts", "backend/package.json"]
 }}
-```
+</JSON_OUTPUT>
 
 **PARTIE 2 : LE CODE GÉNÉRÉ (HORS DU JSON)**
+
 ⚠️ **RÈGLE CRITIQUE** : Le code doit être dans un bloc markdown ` ```code ... ``` `.
 Chaque fichier doit être marqué par : `// Fichier : chemin/complet/depuis/racine`
 
-EXEMPLE :
-```json
+EXEMPLE COMPLET :
+<JSON_OUTPUT>
 {{
   "resume": "Initialisation du serveur backend",
   "impact_fichiers": ["backend/src/app.ts", "backend/package.json"]
 }}
-```
+</JSON_OUTPUT>
 
 ```code
 // Fichier : backend/package.json
@@ -374,3 +383,4 @@ export {{ app }};
 
 RÈGLE 16 : SCRIPT BUILD STANDARD
 Le script build doit toujours être : `"build": "tsc"`. Production dans `dist/`.
+

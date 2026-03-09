@@ -129,36 +129,29 @@ N'oublie pas d'inclure l'en-tête `@SPEC-KIT-TASK` dans les fichiers que tu modi
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois séparer ta réponse en DEUX parties distinctes :
 
-**PARTIE 1 : LE JSON D'ANALYSE**
-Tu dois fournir un JSON valide contenant les métadonnées de ton intervention.
-```json
+**PARTIE 1 : LE JSON D'ANALYSE (OBLIGATOIRE)**
+Tu dois fournir un JSON valide enveloppé dans des balises <JSON_OUTPUT>. Aucun texte ou markdown avant ou après ces balises.
+
+<JSON_OUTPUT>
 {{
   "resume": "Description des corrections de build effectuées",
   "impact_fichiers": ["backend/tsconfig.json", "backend/package.json"]
 }}
-```
-
-CAS CRITIQUE : MODULE NOT FOUND
-
-Si TypeScript indique : `Cannot find module 'lib-name'` :
-
-1. vérifier que la dépendance existe dans la Constitution.
-2. si elle est autorisée mais absente du package.json → l'ajouter.
-3. utiliser une version fixe.
-4. ajouter les types correspondants (@types/*) si autorisé.
-
-CAS CRITIQUE : DTO / ZOD (TS2552)
-
-Si TypeScript indique : `Cannot find name 'XDto'. Did you mean 'X'?` :
-1. Vérifie la casse : Souvent, le TYPE est en `PascalCase` (`CreateUserDto`) et l'OBJET Zod est en `camelCase` (`createUserDto`).
-2. Assure-toi que les DEUX sont importés depuis le fichier DTO.
-3. Le validateur Zod `validate(schema)` attend l'OBJET (`camelCase`), pas le Type.
+</JSON_OUTPUT>
 
 **PARTIE 2 : LE CODE CORRIGÉ (HORS DU JSON)**
 ⚠️ **RÈGLE CRITIQUE** : Le code complet CORRIGÉ doit être fourni en dehors du JSON, dans un bloc markdown dédié ` ```code ... ``` `.
 C'est ici que tu mets TOUT le code concaténé, avec les en-têtes `// Fichier : chemin/vers/fichier`.
 
 # EXEMPLE DE RÉPONSE ATTENDUE
+<JSON_OUTPUT>
+{{
+  "resume": "Correction de la version d'express",
+  "impact_fichiers": ["backend/package.json"]
+}}
+</JSON_OUTPUT>
+
+```code
 // Fichier : backend/package.json
 {{
   "name": "backend",
@@ -175,4 +168,5 @@ C'est ici que tu mets TOUT le code concaténé, avec les en-têtes `// Fichier :
   }}
 }}
 ```
+
 

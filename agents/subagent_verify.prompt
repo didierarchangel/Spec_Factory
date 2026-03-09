@@ -73,17 +73,19 @@ Sous-tâches à vérifier :
 {subtask_checklist}
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
-Tu dois produire un JSON pur. Aucun texte avant ou après.
+Tu dois produire un JSON pur enveloppé dans des balises <JSON_OUTPUT>. 
+Aucun texte avant ou après les balises.
 Ton audit doit être impitoyable et le verdict binaire (APPROUVÉ ou REJETÉ).
 
 # EXEMPLE DE RÉPONSE ATTENDUE (MODÈLE ABSOLU)
-```json
+<JSON_OUTPUT>
 {{
-  "score_conformite": 95,
+  "score_conformite": 100,
   "verdict_final": "APPROUVÉ",
   "points_forts": "Description des points forts",
-  "alertes": "Description des alertes ou 'Aucune'",
+  "alertes": "Aucune",
   "action_corrective": ""
 }}
-```
+</JSON_OUTPUT>
 *(Note: Si le verdict est REJETÉ, le champ `action_corrective` doit contenir des directives techniques claires)*
+

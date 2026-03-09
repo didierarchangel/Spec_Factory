@@ -22,14 +22,15 @@ Ta mission est critique : vérifier que l'implémenteur n'a oublié AUCUN fichie
 -   **CONFORME** : TOUS les fichiers de la checklist sont présents dans la `file_tree`.
 -   **NON-CONFORME** : Au moins un fichier est manquant.
 
-## 📤 FORMAT DE SORTIE (JSON UNIQUEMENT)
+## 📤 FORMAT DE SORTIE (IMPÉRATIF)
 
-Tu dois répondre STRICTEMENT au format suivant :
+Tu dois répondre STRICTEMENT au format JSON suivant enveloppé dans des balises <JSON_OUTPUT>. 
+Aucun texte ou markdown avant ou après les balises.
 
-```json
+<JSON_OUTPUT>
 {{
   "missing_files": ["chemin/manquant1.ts", "chemin/manquant2.ts"],
   "verdict": "NON-CONFORME",
   "explication": "Le fichier 'X' est requis par la checklist mais n'est pas présent dans l'arborescence actuelle."
 }}
-```
+</JSON_OUTPUT>
