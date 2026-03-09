@@ -39,6 +39,10 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 ### 1.3 Outillage & Tests (VERSIONS FIXES OBLIGATOIRES)
 * **Linter/Formatter** : [Ex: ESLint, Prettier]
 * **Tests** : [Ex: Jest (29.7.0), Vitest, Supertest (pour API)]
+* **Classification NPM (STRICTE)** : 
+    - `dependencies` : Uniquement packages de production (express, mongoose, etc.).
+    - `devDependencies` : Outils de dev (typescript, nodemon, eslint, prettier, jest, etc.).
+    - TOUT paquet `@types/*` **DOIT** être dans `devDependencies`.
 * **Note** : Toutes les dépendances (Core, Dev, Outillage) DOIVENT utiliser des versions fixes sans préfixe `^` ou `~`.
 ---
 
@@ -50,6 +54,7 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 ### 2.2 Structure des Fichiers
 * Les contrôleurs / routes doivent toujours se trouver dans : `[CHEMIN_SPECIFIQUE]`
 * Les modèles de données doivent se trouver dans : `[CHEMIN_SPECIFIQUE]`
+* **Structure Garantie** : Le framework garantit l'existence des dossiers `routes`, `controllers`, `models`, `middlewares`, `services` (backend) et `components`, `hooks`, `services` (frontend). L'Agent DOIT utiliser ces dossiers standards.
 
 ---
 
@@ -59,6 +64,7 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 2. **Validation des Entrées** : Toute donnée provenant de l'utilisateur ou d'une API externe doit être typée et validée (Ex: *Pydantic*, *Zod*).
 3. **Séparation des Responsabilités (SOLID)** : Pas de logique métier complexe directement dans les routes de l'API.
 4. **Tolérance de démarrage** : Les règles de validation (Zod) et les middlewares de sécurité ne sont exigés qu'à partir de l'implémentation de la première route métier (CRUD). Les étapes de "Configuration" ou "Setup" sont exemptées si les bibliothèques sont présentes dans le package.json.
+5. **Score de Complétion** : Le score final d'audit est indexé sur la complétion réelle des tâches. Un code parfait (100) mais une checklist incomplète (ex: 2/5 tâches) résultera en un score final dégradé (ex: 40%).
 
 ---
 

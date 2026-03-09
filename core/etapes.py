@@ -197,6 +197,29 @@ class EtapeManager:
         
         return subtasks
 
+    def _file_exists(self, check_root: Path, file_path_str: str) -> bool:
+        """Vérifie l'existence d'un fichier en testant plusieurs préfixes de dossiers courants."""
+        # 1. Chemin direct
+        if (check_root / file_path_str).exists():
+            return True
+            
+        # 2. Normalisation (retrait des préfixes si déjà présents pour éviter les doublons)
+        clean_path = file_path_str.lstrip('/').lstrip('\\').replace('\\', '/')
+        
+        # 3. Liste des préfixes probables
+        prefixes = ["backend", "backend/src", "frontend", "frontend/src"]
+        
+        for prefix in prefixes:
+            # Si le chemin commence déjà par le préfixe, on ne le rajoute pas
+            if clean_path.startswith(prefix + "/"):
+                if (check_root / clean_path).exists(): return True
+                continue
+                
+            if (check_root / prefix / clean_path).exists():
+                return True
+        
+        return False
+
     def mark_step_as_completed(self, step_id: str, synthesis: str = None, project_root: str = None) -> bool:
         """Passe une étape majeure de [ ] à [x]. Les sous-tâches sont cochées intelligemment 
         en vérifiant l'existence des fichiers/dossiers mentionnés sur le disque."""
@@ -237,20 +260,17 @@ class EtapeManager:
                 if file_patterns:
                     # Il y a des fichiers/dossiers mentionnés : vérifier leur existence
                     all_exist = True
-                    missing = []
                     for fp in file_patterns:
-                        # Normalisation du chemin : on enlève le slash de début et on remplace les backslashes
-                        clean_fp = fp.lstrip('/').lstrip('\\').replace('\\', '/')
-                        if not (check_root / clean_fp).exists():
+                        if not self._file_exists(check_root, fp):
                             all_exist = False
-                            missing.append(fp)
+                            break
                     
                     if all_exist:
                         updated_lines.append(line.replace("- [ ]", "- [x]"))
                         checked_count += 1
                         logger.info(f"  ✅ Sous-tâche vérifiée : {subtask_text[:60]}")
                     else:
-                        missing = [fp for fp in file_patterns if not (check_root / fp).exists()]
+                        missing = [fp for fp in file_patterns if not self._file_exists(check_root, fp)]
                         updated_lines.append(line)  # On ne coche PAS
                         logger.warning(f"  ❌ Sous-tâche NON vérifiée (fichiers manquants: {missing}): {subtask_text[:60]}")
                 else:

@@ -14,13 +14,15 @@ Ta mission est critique : vérifier que l'implémenteur n'a oublié AUCUN fichie
 ## 🎯 TES OBJECTIFS
 
 1.  **Extraction des Chemins** : Identifie tous les chemins de fichiers mentionnés dans la checklist (ex: `backend/src/server.ts`).
-2.  **Vérification de Présence** : Vérifie si chaque chemin extrait existe EXACTEMENT dans la `file_tree`.
-3.  **Analyse de Dérive** : Si un fichier manque, il est considéré comme un échec structurel.
+2.  **Vérification de Présence** : Vérifie si chaque chemin extrait existe dans la `file_tree`.
+    -   **ROBUSTESSE** : Si un chemin est `server.ts` et que tu vois `backend/src/server.ts` dans l'arborescence, considère-le comme **PRÉSENT**.
+    -   Vérifie de la même manière pour `package.json`, `tsconfig.json`, `app.ts`, `index.html`, etc.
+3.  **Analyse de Dérive** : Si un fichier manque totalement (même sous un sous-répertoire), il est considéré comme un échec structurel.
 
 ## ⚖️ RÈGLES DU VERDICT
 
--   **CONFORME** : TOUS les fichiers de la checklist sont présents dans la `file_tree`.
--   **NON-CONFORME** : Au moins un fichier est manquant.
+-   **CONFORME** : TOUS les fichiers de la checklist sont présents (exactement ou via correspondance de sous-répertoire) dans la `file_tree`.
+-   **NON-CONFORME** : Au moins un fichier est introuvable dans toute l'arborescence.
 
 ## 📤 FORMAT DE SORTIE (IMPÉRATIF)
 
@@ -30,7 +32,10 @@ Aucun texte ou markdown avant ou après les balises.
 <JSON_OUTPUT>
 {{
   "missing_files": ["chemin/manquant1.ts", "chemin/manquant2.ts"],
+  "total_tasks": 5,
+  "missing_tasks": 2,
   "verdict": "NON-CONFORME",
   "explication": "Le fichier 'X' est requis par la checklist mais n'est pas présent dans l'arborescence actuelle."
 }}
 </JSON_OUTPUT>
+

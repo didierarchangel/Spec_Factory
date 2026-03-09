@@ -57,6 +57,10 @@ class AgentState(TypedDict):
     
     # Checklist des sous-tâches
     subtask_checklist: str
+    
+    # Statistiques de complétion (via TaskEnforcer)
+    total_subtasks: int
+    missing_subtasks: int
 
 
 class SpecGraphManager:
@@ -69,6 +73,28 @@ class SpecGraphManager:
         # Initialisation du graphe
         self.graph_builder = StateGraph(AgentState)
         self._build_graph()
+
+    def _ensure_directory_structure(self):
+        """Garantit l'existence de l'arborescence standard du projet."""
+        folders = [
+            "backend/src/routes",
+            "backend/src/controllers",
+            "backend/src/models",
+            "backend/src/middlewares",
+            "backend/src/services",
+            "frontend/src/components",
+            "frontend/src/hooks",
+            "frontend/src/services",
+            "frontend/src/views"
+        ]
+        count = 0
+        for folder in folders:
+            p = self.root / folder
+            if not p.exists():
+                p.mkdir(parents=True, exist_ok=True)
+                count += 1
+        if count > 0:
+            logger.info(f"📁 Structure de dossiers garantie ({count} dossiers créés).")
 
     def _load_prompt(self, filename: str) -> str:
         """Charge le contenu d'un fichier prompt."""
@@ -99,20 +125,10 @@ class SpecGraphManager:
                 if any(marker in content for marker in ['// Fichier', '// [DEBUT_FICHIER', '# Fichier', 'import ', 'export ', 'const ', 'function ', '"name":', '"dependencies":']):
                     code_blocks.append(content)
         
-        # 3. Fallback ultime : chercher les marqueurs de fichiers HORS des blocs fenced
         if not code_blocks:
-            # Au lieu de supprimer tous les blocs, on les préserve pour l'extraction
-            # mais on nettoie juste les marqueurs ```json pour ne pas les confondre
-            stripped = cleaned.replace("```json", "       ")
-            # Chercher les blocs commençant par un marqueur de fichier
-            raw_blocks = re.findall(r'((?:// Fichier|// \[DEBUT_FICHIER|# Fichier).*?)(?=(?:// Fichier|// \[DEBUT_FICHIER|# Fichier)|$)', stripped, re.DOTALL)
-            if raw_blocks:
-                code_blocks = [b.strip() for b in raw_blocks if b.strip()]
-        
-        if code_blocks:
-            result["code"] = "\n\n".join(code_blocks)
-        else:
             result["code"] = ""
+        else:
+            result["code"] = "\n\n".join(code_blocks)
                 
         # --- EXTRACTION DU JSON ---
         # 1. Priorité : Balises <JSON_OUTPUT> (Format standardisé)
@@ -155,67 +171,9 @@ class SpecGraphManager:
                 
             return result
         except Exception as e:
-            logger.warning(f"⚠️ Échec du parsing JSON standard : {str(e)}. Lancement du Fallback d'extraction agressive...")
-            
-            # 3. Fallback : Extraction manuelle par Regex si LangChain échoue
-            try:
-                # Extraction du champ "resume" ou "verdict_final"
-                resume_match = re.search(r'"(?:resume|verdict_final)"\s*:\s*"((?:\\.|[^"\\])*)"', json_content, re.DOTALL)
-                if resume_match:
-                    val = resume_match.group(1).replace('\\"', '"').replace('\\n', '\n')
-                    result["resume"] = val
-                    result["verdict_final"] = val
-                else:
-                    result["resume"] = "Correction effectuée (sans description)"
-                    result["verdict_final"] = "REJETÉ"
-
-                # Extraction du score
-                score_match = re.search(r'"score_conformite"\s*:\s*"([^"]+)"', json_content)
-                if score_match: result["score_conformite"] = score_match.group(1)
-
-                # Extraction des alertes
-                alertes_match = re.search(r'"alertes"\s*:\s*"([^"]+)"', json_content)
-                if alertes_match: result["alertes"] = alertes_match.group(1)
-
-                # Extraction de l'action corrective
-                action_match = re.search(r'"action_corrective"\s*:\s*"([^"]+)"', json_content)
-                if action_match: result["action_corrective"] = action_match.group(1)
-                    
-                # Extraction du champ "impact_fichiers" (Liste JSON)
-                impact_match = re.search(r'"impact_fichiers"\s*:\s*\[(.*?)\]', json_content, re.DOTALL)
-                if impact_match:
-                    impact_list = impact_match.group(1)
-                    # Trouve toutes les chaînes entre guillemets
-                    files = re.findall(r'"([^"]+)"', impact_list)
-                    result["impact_fichiers"] = files
-                else:
-                    if "impact_fichiers" not in result:
-                        result["impact_fichiers"] = []
-                    
-                # Si l'ancien format 'code dans JSON' était utilisé mais cassé
-                if not result.get("code"):
-                    code_match = re.search(r'"code"\s*:\s*"(.*)"\s*}?\s*$', json_content, re.DOTALL)
-                    if code_match:
-                        raw_code = code_match.group(1)
-                        raw_code = raw_code.replace('\\n', '\n').replace('\\"', '"').replace('\\t', '\t')
-                        raw_code = re.sub(r'"\s*}\s*$', '', raw_code)
-                        result["code"] = raw_code
-                        
-                # Si on a un code ou un impact_fichiers, c'est suffisant pour impl_node
-                if result.get("code") or result.get("impact_fichiers"):
-                    logger.info("✅ Fallback d'extraction réussi.")
-                    return result
-                
-                # Si on est dans verify_node et qu'on a le verdict, c'est bon
-                if result.get("verdict_final"):
-                    logger.info("✅ Fallback d'extraction réussi (Verify).")
-                    return result
-                    
-                raise ValueError("Le fallback n'a pas pu extraire de données significatives.")
-                    
-            except Exception as fallback_error:
-                logger.error(f"❌ Échec total du parsing JSON et du fallback : {str(fallback_error)}")
-                raise e # On relève l'erreur originale de LangChain
+            logger.error(f"❌ Échec critique du parsing JSON : {str(e)}")
+            # On renvoie une erreur explicite pour que le noeud appelant puisse réagir
+            raise ValueError(f"Format JSON invalide ou absent dans la réponse de l'IA : {str(e)}")
 
     # ─── 2. Nœuds (fonctions de traitement) ───────────────────────────────
 
@@ -276,6 +234,14 @@ class SpecGraphManager:
             )
             logger.info("✅ Analyse terminée.")
             return {"analysis_output": analysis_str, "feedback_correction": "", "error_count": 0}
+        except ValueError as e:
+            error_msg = f"Réponse IA corrompue (Analysis JSON) : {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            return {
+                "validation_status": "REJETÉ",
+                "feedback_correction": f"CRITICAL: Analysis response was invalid JSON. {str(e)}. Please retry with valid JSON.",
+                "last_error": error_msg
+            }
         except Exception as e:
             error_msg = f"Erreur d'analyse : {str(e)}"
             logger.error(f"❌ {error_msg}")
@@ -288,6 +254,9 @@ class SpecGraphManager:
     def impl_node(self, state: AgentState) -> dict:
         """Nœud 2 : Génération de code pur (Exécutant)."""
         logger.info(f"💻 Début de l'Implémentation pour la tâche : {state['target_task']}")
+        
+        # Garantie structurelle avant génération
+        self._ensure_directory_structure()
         
         prompt_text = self._load_prompt("subagent_impl.prompt")
         
@@ -352,13 +321,24 @@ class SpecGraphManager:
                 "validation_status": "APPROUVÉ", # Status interne pour passer à la suite
                 "error_count": 0 # Reset si succès
             }
+        except ValueError as e:
+            error_msg = f"Réponse IA corrompue (JSON invalide) : {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            new_error_count = state.get("error_count", 0) + 1
+            return {
+                "validation_status": "REJETÉ",
+                "feedback_correction": f"CRITICAL: Your last response was not valid JSON or contained corrupted data. {str(e)}. Please regenerate the FULL response ensuring valid JSON structure and complete code blocks within <JSON_OUTPUT> tags.",
+                "error_count": new_error_count,
+                "last_error": error_msg
+            }
         except Exception as e:
             error_msg = f"Erreur d'implémentation : {str(e)}"
             logger.error(f"❌ {error_msg}")
-            # On passe l'erreur comme "code" pour que l'auditeur la voit si besoin, 
-            # mais on incrémentera le compteur d'erreurs plus tard
+            new_error_count = state.get("error_count", 0) + 1
             return {
-                "code_to_verify": f"ERREUR TECHNIQUE LORS DE LA GÉNÉRATION : {str(e)}",
+                "validation_status": "REJETÉ",
+                "feedback_correction": f"Technical error during implementation: {str(e)}. Please retry.",
+                "error_count": new_error_count,
                 "last_error": error_msg
             }
 
@@ -407,11 +387,25 @@ class SpecGraphManager:
                 result['alertes'] = f"Le code n'a pas pu être généré : {state['code_to_verify']}"
                 result['action_corrective'] = "Réessaye de générer le code en respectant strictement le format JSON."
 
+            # Intégration du score de complétion des tâches
+            audit_score = result.get("score_conformite", 0)
+            
+            # Calcul du score basé sur les tâches réelles (TaskEnforcer)
+            total = state.get("total_subtasks", 0)
+            missing = state.get("missing_subtasks", 0)
+            
+            if total > 0:
+                task_score = int(((total - missing) / total) * 100)
+                final_score = min(audit_score, task_score)
+                logger.info(f"📊 Score final calculé : min(Audit:{audit_score}, Tâches:{task_score}%) = {final_score}")
+            else:
+                final_score = audit_score
+
             if status == "APPROUVÉ":
-                logger.info(f"✅ Code APPROUVÉ par l'Auditeur (Score: {result['score_conformite']}).")
+                logger.info(f"✅ Code APPROUVÉ par l'Auditeur. Score final: {final_score}")
                 return {
                     "validation_status": "APPROUVÉ", 
-                    "score": result['score_conformite'],
+                    "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
                     "alertes": result.get('alertes', 'Aucune alerte.'),
                     "feedback_correction": "",
@@ -422,13 +416,23 @@ class SpecGraphManager:
                 logger.warning(f"❌ Code REJETÉ par l'Auditeur ({new_error_count}/3). Raison : {result['alertes']}")
                 return {
                     "validation_status": "REJETÉ", 
-                    "score": result['score_conformite'],
+                    "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
                     "alertes": result.get('alertes', ''),
                     "feedback_correction": result["action_corrective"],
                     "error_count": new_error_count
                 }
                 
+        except ValueError as e:
+            error_msg = f"Réponse IA corrompue (JSON Audit) : {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            new_error_count = state.get("error_count", 0) + 1
+            return {
+                "validation_status": "REJETÉ", 
+                "feedback_correction": f"CRITICAL: Audit response was invalid JSON. {str(e)}. Please re-audit correctly.",
+                "error_count": new_error_count,
+                "last_error": error_msg
+            }
         except Exception as e:
             error_msg = f"Erreur de parser (Audit) : {str(e)}"
             logger.error(f"❌ {error_msg}")
@@ -461,13 +465,23 @@ class SpecGraphManager:
             
             if result["verdict"] == "CONFORME":
                 logger.info("✅ Structure conforme (aucun fichier manquant).")
-                return {"validation_status": "STRUCTURE_OK", "feedback_correction": ""}
+                return {
+                    "validation_status": "STRUCTURE_OK", 
+                    "feedback_correction": "",
+                    "total_subtasks": result.get("total_tasks", 0),
+                    "missing_subtasks": result.get("missing_tasks", 0)
+                }
             else:
                 logger.warning(f"❌ Structure NON-CONFORME. Fichiers manquants : {', '.join(result['missing_files'])}")
                 return {
                     "validation_status": "STRUCTURE_KO",
-                    "feedback_correction": f"FICHIERS MANQUANTS DÉTECTÉS : {', '.join(result['missing_files'])}. {result['explication']}"
+                    "feedback_correction": f"FICHIERS MANQUANTS DÉTECTÉS : {', '.join(result['missing_files'])}. {result['explication']}",
+                    "total_subtasks": result.get("total_tasks", 0),
+                    "missing_subtasks": result.get("missing_tasks", 0)
                 }
+        except ValueError as e:
+            logger.error(f"❌ Réponse IA corrompue (TaskEnforcer JSON) : {str(e)}")
+            return {"validation_status": "STRUCTURE_KO", "feedback_correction": f"CRITICAL: TaskEnforcer response was invalid JSON. {str(e)}. Please retry."}
         except Exception as e:
             logger.error(f"❌ Erreur critique TaskEnforcer : {str(e)}")
             return {"validation_status": "STRUCTURE_KO", "feedback_correction": f"TaskEnforcer Error: {str(e)}"}
@@ -586,6 +600,9 @@ class SpecGraphManager:
                 "error_count": new_error_count,
                 "feedback_correction": f"BUILD FIX APPLIED (Attempt {new_error_count}): {result.get('resume', 'Aucun résumé')}"
             }
+        except ValueError as e:
+            logger.warning(f"⚠️ Réponse IA corrompue (BuildFix JSON) : {str(e)}")
+            return {"feedback_correction": f"BUILD FIX FAILED (Invalid JSON): {str(e)}"}
         except Exception as e:
             logger.warning(f"⚠️ Échec du BuildFixer : {str(e)}")
             return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}

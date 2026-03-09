@@ -24,6 +24,11 @@ Tu dois diviser le projet en **Phases** logiques, puis en **Étapes** atomiques.
   3. *Intégrations* : API externes, services tiers.
   4. *Polissage* : UI/UX finesse, gestion d'erreurs globales.
 
+## 2. RÈGLE DES CHEMINS (CONCORDANCE)
+Tu dois toujours mentionner les chemins de fichiers entre backticks (ex: `backend/src/server.ts`). 
+- Préfère les chemins complets si connus.
+- Le framework supporte la détection automatique dans `backend/`, `backend/src/`, `frontend/` et `frontend/src/` si le fichier est déplacé par erreur.
+
 ## 2. FORMAT DE SORTIE EXIGÉ
 Ton résultat doit être un pur document Markdown utilisant STRICTEMENT la syntaxe des cases à cocher `[ ]`. Ne génère aucun texte d'introduction ni de conclusion.
 

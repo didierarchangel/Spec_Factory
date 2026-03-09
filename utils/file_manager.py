@@ -120,6 +120,33 @@ class FileManager:
         if not code:
             return written_files
 
+    def _normalize_package_json(self, content: str) -> str:
+        """Déplace les dépendances de développement (types, outils) dans devDependencies."""
+        import json
+        try:
+            pkg = json.loads(content)
+            modified = False
+            
+            if "dependencies" not in pkg: pkg["dependencies"] = {}
+            if "devDependencies" not in pkg: pkg["devDependencies"] = {}
+            
+            dev_patterns = ["eslint", "prettier", "typescript", "ts-node", "nodemon", "jest", "vitest", "supertest"]
+            
+            for dep in list(pkg["dependencies"].keys()):
+                is_dev = dep.startswith("@types/") or any(p in dep for p in dev_patterns)
+                
+                if is_dev:
+                    pkg["devDependencies"][dep] = pkg["dependencies"].pop(dep)
+                    modified = True
+            
+            if modified:
+                logger.info("🧙‍♂️ package.json normalisé : dépendances de dev déplacées vers devDependencies.")
+                return json.dumps(pkg, indent=2)
+            return content
+        except Exception as e:
+            logger.warning(f"⚠️ Échec de la normalisation de package.json : {e}")
+            return content
+
         # Regex robuste pour détecter les en-têtes de fichiers
         pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
         file_blocks = re.split(pattern, code)
@@ -158,6 +185,10 @@ class FileManager:
                             logger.error(f"❌ Erreur lecture template {chosen_template}: {e}")
                     else:
                         logger.warning(f"⚠️ Aucun Golden Template trouvé pour {file_path_str}, utilisation du contenu IA.")
+
+                    # --- NORMALISATION DES DÉPENDANCES ---
+                    if not is_golden:
+                        final_content = self._normalize_package_json(final_content)
 
                 # Nettoyage profond (marqueurs FIN, backticks markdown)
                 final_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', final_content)

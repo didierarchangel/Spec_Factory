@@ -55,5 +55,7 @@ class SubagentBuildFixOutput(BaseModel):
 class SubagentTaskEnforcerOutput(BaseModel):
     """Schéma de sortie attendu pour subagent_Speckit-TaskEnforcer.prompt."""
     missing_files: List[str] = Field(description="Liste des fichiers manquants par rapport à la checklist.")
+    total_tasks: int = Field(description="Nombre total de sous-tâches identifiées dans la checklist.")
+    missing_tasks: int = Field(description="Nombre de sous-tâches non réalisées ou fichiers manquants.")
     verdict: str = Field(description="STRICTEMENT 'CONFORME' ou 'NON-CONFORME'.")
     explication: str = Field(description="Explication brève du verdict.")

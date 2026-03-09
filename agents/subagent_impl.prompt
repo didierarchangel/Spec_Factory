@@ -255,6 +255,12 @@ Règle 11 : CONVENTION DTO / ZOD (STRICTE)
 - **IMPORTS RÉELS** : Tous les imports de fichiers internes doivent correspondre à des fichiers existants dans la {code_map} ou créés dans cette tâche.
 - **TYPES GLOBAUX** : Utilise les types de la Constitution pour les entités et les DTOs.
 
+# RÈGLE 12.1 : CLASSIFICATION DES DÉPENDANCES (STRICTE)
+Tu dois classer les paquets NPM avec rigueur :
+- **Production (`dependencies`)** : express, mongoose, jsonwebtoken, bcryptjs, cors, dotenv, express-validator, morgan, helmet.
+- **Développement (`devDependencies`)** : typescript, ts-node, nodemon, eslint, prettier, jest, ts-jest, vitest, supertest.
+- **TYPES** : TOUT paquet commençant par `@types/` (ex: `@types/express`) **DOIT** être dans `devDependencies`.
+
 Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 
 1.  **Versions FIXES** : Interdiction d'utiliser `^` ou `~`.
