@@ -131,6 +131,7 @@ class FileManager:
                 
                 # --- FILTRE PHYSIQUE : GOLDEN TEMPLATE OVERRIDE ---
                 final_content = ai_content
+                is_golden = False
                 
                 if "tsconfig.json" in file_path_str.lower():
                     is_backend = "backend" in file_path_str.lower()
@@ -151,6 +152,7 @@ class FileManager:
                     if chosen_template:
                         try:
                             final_content = chosen_template.read_text(encoding="utf-8")
+                            is_golden = True
                             logger.info(f"🛡️ Golden Template appliqué pour : {file_path_str} (Source: {chosen_template.name})")
                         except Exception as e:
                             logger.error(f"❌ Erreur lecture template {chosen_template}: {e}")
@@ -162,13 +164,17 @@ class FileManager:
                 final_content = re.sub(r'```(?:[a-zA-Z0-9]+)?\n?', '', final_content)
                 final_content = final_content.replace('```', '')
                 
-                # Protection JSON spécifique
-                if file_path_str.endswith('.json'):
+                # Protection JSON spécifique (uniquement sur le code IA)
+                if not is_golden and file_path_str.endswith('.json'):
+                    # On évite de stripper les globs /* dans les strings
                     final_content = re.sub(r'/\*\*[\s\S]*?\*/', '', final_content)
-                    final_content = re.sub(r'/\*[\s\S]*?\*/', '', final_content)
+                    # On protège les patterns src/**/* en étant plus restrictif sur ce qu'on considère comme un commentaire
+                    # Un commentaire multi-ligne commence souvent en début de ligne ou après un espace
+                    final_content = re.sub(r'(?m)^\s*/\*[\s\S]*?\*/', '', final_content)
                     final_content = re.sub(r'(?m)^\s*//.*$', '', final_content)
                 
                 if self.safe_write(file_path_str, final_content.strip()):
-                    written_files.append(file_path_str)
+                    # On retourne le contenu FINAL (sanitisé/golden) pour synchronisation
+                    written_files.append({"path": file_path_str, "content": final_content.strip()})
         
         return written_files

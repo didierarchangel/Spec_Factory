@@ -306,12 +306,13 @@ class SpecGraphManager:
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             logger.info("✅ Implémentation terminée.")
             
-            # Persistance immédiate des fichiers sur le disque
+            # Persistance immédiate des fichiers sur le disque (on récupère le code sanitizé/golden)
+            sanitized_code = ""
             if result.get("code"):
-                self._persist_code_to_disk(result["code"])
+                sanitized_code = self._persist_code_to_disk(result["code"])
                 
             return {
-                "code_to_verify": result["code"],
+                "code_to_verify": sanitized_code if sanitized_code else result["code"],
                 "impact_fichiers": result.get("impact_fichiers", []),
                 "last_error": ""
             }
@@ -494,11 +495,12 @@ class SpecGraphManager:
             logger.info("✅ Réparation du build terminée.")
             
             # Persistance immédiate des corrections sur le disque
+            sanitized_fix = ""
             if result.get("code"):
-                self._persist_code_to_disk(result["code"])
+                sanitized_fix = self._persist_code_to_disk(result["code"])
                 
             # FUSION du code : on fusionne les corrections avec le code de base
-            merged_code = self._merge_code(state.get("code_to_verify", ""), result.get("code", ""))
+            merged_code = self._merge_code(state.get("code_to_verify", ""), sanitized_fix if sanitized_fix else result.get("code", ""))
                 
             new_error_count = state.get("error_count", 0) + 1
             return {
@@ -511,19 +513,27 @@ class SpecGraphManager:
             logger.warning(f"⚠️ Échec du BuildFixer : {str(e)}")
             return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}
 
-    def _persist_code_to_disk(self, code: str) -> list:
-        """Extrait les blocs de fichiers du code généré et les écrit physiquement sur le disque."""
+    def _persist_code_to_disk(self, code: str) -> str:
+        """Extrait les blocs de fichiers du code généré, les écrit, et retourne le code sanitizé."""
         from utils.file_manager import FileManager
         fm = FileManager(base_path=str(self.root))
         
         if not code:
-            return []
+            return ""
             
-        written_files = fm.extract_and_write(code)
-        if written_files:
-            logger.info(f"💾 {len(written_files)} fichiers persistés sur le disque.")
+        # extract_and_write retourne désormais [{"path": ..., "content": ...}]
+        results = fm.extract_and_write(code)
+        
+        if results:
+            logger.info(f"💾 {len(results)} fichiers persistés sur le disque.")
+            # On reconstruit le code complet mais avec les contenus sanitizés (Golden Templates appliqués)
+            sanitized_blocks = []
+            for item in results:
+                sanitized_blocks.append(f"// Fichier : {item['path']}")
+                sanitized_blocks.append(item['content'])
+            return "\n".join(sanitized_blocks)
             
-        return written_files
+        return code
 
     def _merge_code(self, base_code: str, delta_code: str) -> str:
         """Fusionne deux blocs de code multi-fichiers. Le delta écrase la base si conflit."""
