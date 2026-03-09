@@ -311,9 +311,11 @@ class SpecGraphManager:
                 "code_map": state.get("code_map", "Non générée"),
                 "file_tree": state.get("file_tree", "Non générée"),
                 "design_spec": state.get("design_spec", "Non générée"),
+                "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
                 "user_instruction": state.get("user_instruction", ""),
                 "format_instructions": parser.get_format_instructions()
             })
+
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             logger.info("✅ Implémentation terminée.")
             
