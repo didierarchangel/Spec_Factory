@@ -198,6 +198,9 @@ def init(path, here):
             target_ts = target_path / "backend" / "tsconfig.json"
             shutil.copy(str(source), str(target_ts))
             click.echo("✅ `backend/tsconfig.json` initialisé.")
+            
+            # --- Nouveau : Configuration .env du Backend ---
+            setup_backend_env_logic(target_path, selected_backend)
 
     # 2. Injection du Frontend Template
     frontend_ts_map = {
@@ -302,6 +305,35 @@ OPENAI_API_KEY=votre_cle_ici
     # Créer le .env s'il n'existe pas déjà pour faciliter la vie de l'utilisateur
     if not env_path.exists():
         env_path.write_text(content, encoding="utf-8")
+
+def setup_backend_env_logic(target_path: Path, backend_type: str):
+    """Crée un fichier .env spécifique au backend sélectionné."""
+    backend_env_path = target_path / "backend" / ".env"
+    backend_env_example_path = target_path / "backend" / ".env.example"
+    
+    # Template par défaut (Node.js / MongoDB)
+    content = """# 💻 Backend Configuration
+PORT=5000
+MONGODB_URI=mongodb://localhost:27017/mon_projet
+JWT_SECRET=super_secret_key_à_changer_en_production
+NODE_ENV=development
+"""
+    
+    if "FastAPI" in backend_type or "Flask" in backend_type:
+        content = """# 🐍 Python Backend Configuration
+DATABASE_URL=sqlite:///./sql_app.db
+SECRET_KEY=votre_cle_secrete_python
+DEBUG=True
+"""
+    
+    # Création des fichiers
+    backend_env_path.parent.mkdir(parents=True, exist_ok=True)
+    backend_env_example_path.write_text(content, encoding="utf-8")
+    
+    if not backend_env_path.exists():
+        backend_env_path.write_text(content, encoding="utf-8")
+    
+    click.echo("✅ Environnement Backend (.env) initialisé.")
 
 @cli.command("setup-env")
 @click.option('--path', default=".", help="Chemin où créer le fichier .env.example")

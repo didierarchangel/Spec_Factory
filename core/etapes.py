@@ -42,8 +42,9 @@ class EtapeManager:
             1. Comparer la Constitution avec la SEMANTIC MAP et le PLAN EXISTANT.
             2. Générer la liste COMPLÈTE des étapes nécessaires pour tout le projet (historique inclus).
             3. PRÉSERVER le statut [x] pour toutes les étapes et sous-tâches déjà marquées comme terminées dans le PLAN EXISTANT.
-            4. Marquer [x] les nouvelles étapes ou sous-tâches si elles sont détectées comme déjà présentes dans la SEMANTIC MAP.
-            5. Découper le reste en étapes atomiques avec des sous-tâches actionnables.
+            4. **RÈGLE CRITIQUE DE RÉALITÉ** : Marquer [x] une sous-tâche UNIQUEMENT si tu vois la preuve directe de son accomplissement dans la SEMANTIC MAP (ex: le fichier mentionné est présent). 
+            5. **INTERDICTION D'HALLUCINATION** : Si un fichier (ex: `package.json`, `.eslintrc.js`, `app.ts`) n'est PAS listé dans la SEMANTIC MAP, la tâche qui le concerne DOIT rester en [ ]. Ne suppose jamais qu'un standard est présent.
+            6. Découper le reste en étapes atomiques avec des sous-tâches actionnables.
             
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
@@ -95,7 +96,8 @@ class EtapeManager:
             - Identifier ce qui est nouveau dans la Constitution par rapport au plan actuel et au code existant.
             - Créer une ou plusieurs étapes (ex: ## [ ] 04_nouveau_module) si la fonctionnalité est complexe.
             - Ne pas répéter les étapes déjà présentes dans le plan actuel.
-            - Marquer [x] les sous-tâches ou fichiers déjà détectés dans la Semantic Map.
+            - **RÈGLE RÉALITÉ** : Marquer [x] UNIQUEMENT si le fichier est dans la Semantic Map.
+            - Si un fichier n'est pas vu sur le disque, laisse la tâche en [ ].
             - RÉPONDRE UNIQUEMENT AVEC LE BLOC DES NOUVELLES ÉTAPES (format Markdown ## [ ] id : titre)."""),
             ("user", "CONSTITUTION :\n{const}\n\nPLAN ACTUEL :\n{etapes}\n\nSEMANTIC MAP :\n{semantic_map}")
         ])
