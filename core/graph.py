@@ -220,15 +220,24 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            raw_output = chain.invoke({
-                "constitution_content": state["constitution_content"],
-                "current_step": state["current_step"],
-                "completed_tasks_summary": state["completed_tasks_summary"],
-                "pending_tasks": state["pending_tasks"],
-                "target_task": state["target_task"],
-                "user_instruction": state.get("user_instruction", ""),
-                "format_instructions": parser.get_format_instructions()
-            })
+            import concurrent.futures
+            
+            def run_chain():
+                return chain.invoke({
+                    "constitution_content": state["constitution_content"],
+                    "current_step": state["current_step"],
+                    "completed_tasks_summary": state["completed_tasks_summary"],
+                    "pending_tasks": state["pending_tasks"],
+                    "target_task": state["target_task"],
+                    "user_instruction": state.get("user_instruction", ""),
+                    "format_instructions": parser.get_format_instructions()
+                })
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_chain)
+                # Hard timeout de 90 secondes sur l'appel LLM
+                raw_output = future.result(timeout=90)
+
             result = self._safe_parse_json(raw_output, SubagentAnalysisOutput)
             # On convertit le dict JSON en string formatée pour l'injecter au noeud suivant
             analysis_str = (
@@ -306,24 +315,32 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            raw_output = chain.invoke({
-                "constitution_hash": state.get("constitution_hash", "INCONNU"),
-                "constitution_content": state["constitution_content"],
-                "current_step": state["current_step"],
-                "completed_tasks_summary": state["completed_tasks_summary"],
-                "pending_tasks": state["pending_tasks"],
-                "target_task": state["target_task"],
-                "analysis_output": state["analysis_output"],
-                "feedback_correction": state.get("feedback_correction", ""),
-                "terminal_diagnostics": state.get("terminal_diagnostics", ""),
-                "code_map": state.get("code_map", "Non générée"),
-                "file_tree": state.get("file_tree", "Non générée"),
-                "design_spec": state.get("design_spec", "Non générée"),
-                "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
-                "user_instruction": state.get("user_instruction", ""),
-                "existing_code_snapshot": existing_snapshot,
-                "format_instructions": parser.get_format_instructions()
-            })
+            import concurrent.futures
+            
+            def run_chain():
+                return chain.invoke({
+                    "constitution_hash": state.get("constitution_hash", "INCONNU"),
+                    "constitution_content": state["constitution_content"],
+                    "current_step": state["current_step"],
+                    "completed_tasks_summary": state["completed_tasks_summary"],
+                    "pending_tasks": state["pending_tasks"],
+                    "target_task": state["target_task"],
+                    "analysis_output": state["analysis_output"],
+                    "feedback_correction": state.get("feedback_correction", ""),
+                    "terminal_diagnostics": state.get("terminal_diagnostics", ""),
+                    "code_map": state.get("code_map", "Non générée"),
+                    "file_tree": state.get("file_tree", "Non générée"),
+                    "design_spec": state.get("design_spec", "Non générée"),
+                    "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
+                    "user_instruction": state.get("user_instruction", ""),
+                    "existing_code_snapshot": existing_snapshot,
+                    "format_instructions": parser.get_format_instructions()
+                })
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_chain)
+                # Hard timeout de 150 secondes sur la génération de code (car plus long)
+                raw_output = future.result(timeout=150)
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             new_code = result.get("code", "")

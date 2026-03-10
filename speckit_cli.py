@@ -374,16 +374,21 @@ def get_llm(provider: str = None, model_name: str = None):
             model = "gemini-2.5-flash" if provider == "google" else "gemini-2.5-flash-lite"
         else:
             model = model_name
-            
-        return ChatGoogleGenerativeAI(model=model)
+        
+        # Configuration avec timeout pour éviter les blocages
+        return ChatGoogleGenerativeAI(
+            model=model,
+            timeout=60,  # Timeout correct pour langchain-google-genai
+            max_retries=2       # Retry automatique en cas d'échec
+        )
     elif provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
         model = model_name or "claude-3-5-sonnet-20240620"
-        return ChatAnthropic(model=model)
+        return ChatAnthropic(model=model, timeout=60, max_retries=2)
     elif provider == "openai":
         from langchain_openai import ChatOpenAI
         model = model_name or "gpt-4o"
-        return ChatOpenAI(model=model)
+        return ChatOpenAI(model=model, request_timeout=60, max_retries=2)
     elif provider == "copilot":
         # Simulation via OpenAI ou spécifique Github si implémenté
         from langchain_openai import ChatOpenAI
