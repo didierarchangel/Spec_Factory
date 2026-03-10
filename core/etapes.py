@@ -299,6 +299,7 @@ class EtapeManager:
         found = False
         checked_count = 0
         total_subtasks = 0
+        header_index = -1
 
         # Regex pour matcher l'étape cible
         step_pattern = rf"^## \[ \] {re.escape(step_id)}(?:\s*:|$)"
@@ -306,7 +307,8 @@ class EtapeManager:
         for line in lines:
             # Si on trouve le header de l'étape cible
             if re.match(step_pattern, line):
-                updated_lines.append(line.replace("[ ]", "[x]"))
+                header_index = len(updated_lines)
+                updated_lines.append(line)
                 inside_target_step = True
                 found = True
                 continue
@@ -392,6 +394,11 @@ class EtapeManager:
                 return True
             logger.warning("Étape '%s' non trouvée.", step_id)
             return False
+
+        if header_index != -1 and checked_count == total_subtasks and total_subtasks > 0:
+            updated_lines[header_index] = updated_lines[header_index].replace("[ ]", "[x]")
+        elif header_index != -1 and total_subtasks == 0:
+            updated_lines[header_index] = updated_lines[header_index].replace("[ ]", "[x]")
 
         self.etapes_path.write_text("\n".join(updated_lines), encoding="utf-8")
         logger.info(f"Étape '{step_id}' : {checked_count}/{total_subtasks} sous-tâches vérifiées et cochées.")

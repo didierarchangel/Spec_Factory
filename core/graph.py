@@ -708,11 +708,18 @@ class SpecGraphManager:
         has_tsc_errors = "❌ ÉCHEC" in state.get("terminal_diagnostics", "")
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
         
-        if has_tsc_errors or has_structure_errors:
-            if state.get("error_count", 0) >= MAX_RETRIES:
-                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
-                return "verify_node"
+        if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors or has_structure_errors):
+            logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
+            return "verify_node"
+            
+        if has_structure_errors:
+            logger.warning("🔨 Manque de fichiers structuraux : route vers impl_node (PATCH).")
+            return "impl_node"
+            
+        if has_tsc_errors:
+            logger.warning("🐛 Erreurs TypeScript : route vers buildfix_node.")
             return "buildfix_node"
+            
         return "verify_node"
 
     def route_after_verify(self, state: AgentState) -> str:
