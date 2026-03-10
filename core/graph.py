@@ -64,6 +64,7 @@ class AgentState(TypedDict):
     
     # Modules manquants détectés par les diagnostics (Auto-installation)
     missing_modules: List[str]
+    deps_attempts: int
     
     # Statistiques de complétion (via TaskEnforcer)
     total_subtasks: int
@@ -409,59 +410,15 @@ class SpecGraphManager:
             except Exception as e:
                 logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
             
-            # ─── FILET DE SÉCURITÉ : vérifier les deps mentionnées dans la checklist ───
-            checklist = state.get("subtask_checklist", "")
-            if not checklist:
-                continue
-            
-            # Extraire les noms de packages des backticks dans la checklist
-            # Ex: "`express`, `mongoose`, `jsonwebtoken`, `bcryptjs`"
-            checklist_deps = set(re.findall(r'`([a-z@][a-z0-9\-_@/\.]*)`', checklist, re.IGNORECASE))
-            
-            # Filtrer : garder seulement ce qui ressemble à un package npm (pas un fichier)
-            npm_packages = {d for d in checklist_deps 
-                          if not any(d.endswith(ext) for ext in ('.ts', '.tsx', '.js', '.json', '.md'))
-                          and '/' not in d or d.startswith('@')}
-            
-            if not npm_packages:
-                continue
-            
-            # Lire le package.json pour voir ce qui est déjà installé
-            try:
-                data = json.loads(pkg_path.read_text(encoding="utf-8"))
-                installed = set(data.get("dependencies", {}).keys()) | set(data.get("devDependencies", {}).keys())
-            except Exception:
-                installed = set()
-            
-            # Identifier les packages manquants
-            # Packages connus comme devDependencies
-            dev_packages = {'typescript', 'ts-node', 'nodemon', 'eslint', 'prettier', 
-                           'jest', 'ts-jest', 'vitest', 'supertest'}
-            
-            missing_prod = [p for p in npm_packages - installed 
-                           if p not in dev_packages and not p.startswith('@types/')]
-            missing_dev = [p for p in npm_packages - installed 
-                          if p in dev_packages or p.startswith('@types/')]
-            
-            if missing_prod:
-                logger.info(f"🔧 Deps manquantes (prod) : {missing_prod}")
-                try:
-                    subprocess.run(["npm", "install", "--save"] + missing_prod, 
-                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
-                except Exception as e:
-                    logger.warning(f"⚠️ Install deps manquantes échoué : {e}")
-            
-            if missing_dev:
-                logger.info(f"🔧 Deps manquantes (dev) : {missing_dev}")
-                try:
-                    subprocess.run(["npm", "install", "--save-dev"] + missing_dev, 
-                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
-                except Exception as e:
-                    logger.warning(f"⚠️ Install devDeps manquantes échoué : {e}")
-                    
             # ─── AUTO-RÉSOLUTION DES ERREURS TSC (Cannot find module 'X') ───
             tsc_missing_modules = state.get("missing_modules", [])
             if tsc_missing_modules:
+                try:
+                    data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                    installed = set(data.get("dependencies", {}).keys()) | set(data.get("devDependencies", {}).keys())
+                except Exception:
+                    installed = set()
+                    
                 # Filtrer ceux déjà installés pour ne pas boucler
                 modules_to_install = [m for m in tsc_missing_modules if m not in installed]
                 if modules_to_install:
@@ -477,8 +434,59 @@ class SpecGraphManager:
                                           cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
                     except Exception as e:
                         logger.error(f"⚠️ Échec de l'auto-résolution des modules TSC : {e}")
-        
-        return {"validation_status": "DEPS_INSTALLED" if found_pkg else "NO_PACKAGE_JSON"}
+            
+            # ─── FILET DE SÉCURITÉ : vérifier les deps mentionnées dans la checklist ───
+            checklist = state.get("subtask_checklist", "")
+            if not checklist:
+                continue
+            
+            # Extraire les noms de packages des backticks dans la checklist
+            checklist_deps = set(re.findall(r'`([a-z@][a-z0-9\-_@/\.]*)`', checklist, re.IGNORECASE))
+            
+            # Filtrer : garder seulement ce qui ressemble à un package npm
+            npm_packages = {d for d in checklist_deps 
+                          if not any(d.endswith(ext) for ext in ('.ts', '.tsx', '.js', '.json', '.md'))
+                          and '/' not in d or d.startswith('@')}
+            
+            if not npm_packages:
+                continue
+            
+            # Lire le package.json pour la checklist
+            try:
+                data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                installed = set(data.get("dependencies", {}).keys()) | set(data.get("devDependencies", {}).keys())
+            except Exception:
+                installed = set()
+            
+            dev_packages = {'typescript', 'ts-node', 'nodemon', 'eslint', 'prettier', 
+                           'jest', 'ts-jest', 'vitest', 'supertest'}
+            
+            missing_prod = [p for p in npm_packages - installed 
+                           if p not in dev_packages and not p.startswith('@types/')]
+            missing_dev = [p for p in npm_packages - installed 
+                          if p in dev_packages or p.startswith('@types/')]
+            
+            if missing_prod:
+                logger.info(f"🔧 Deps manquantes (prod) : {missing_prod}")
+                try:
+                    subprocess.run(["npm", "install", "--save"] + missing_prod, 
+                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                except Exception as e:
+                    pass
+            
+            if missing_dev:
+                logger.info(f"🔧 Deps manquantes (dev) : {missing_dev}")
+                try:
+                    subprocess.run(["npm", "install", "--save-dev"] + missing_dev, 
+                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                except Exception as e:
+                    pass
+                    
+        current_attempts = state.get("deps_attempts", 0)
+        return {
+            "validation_status": "DEPS_INSTALLED" if found_pkg else "NO_PACKAGE_JSON",
+            "deps_attempts": current_attempts + 1
+        }
 
 
     def verify_node(self, state: AgentState) -> dict:
@@ -743,7 +751,7 @@ class SpecGraphManager:
         logger.info("🛠️ Diagnostics terminés.")
         return {
             "terminal_diagnostics": "\n".join(reports),
-            "missing_modules": list(set(missing_modules))
+            "missing_modules": list(set(missing_modules)) # Écrase la liste précédente
         }
 
     def route_after_impl(self, state: AgentState) -> str:
@@ -765,8 +773,15 @@ class SpecGraphManager:
             return "verify_node"
             
         if has_missing_modules:
-            logger.warning(f"📦 Modules manquants détectés {state.get('missing_modules')}. Auto-installation via install_deps_node.")
-            return "install_deps_node"
+            # Protection contre les boucles infinies de dépendances
+            deps_attempts = state.get("deps_attempts", 0)
+            if deps_attempts < 3:
+                logger.warning(f"📦 Modules manquants détectés {state.get('missing_modules')}. Auto-installation ({deps_attempts+1}/3).")
+                return "install_deps_node"
+            else:
+                logger.error(f"⚠️ Auto-installation a échoué 3 fois pour {state.get('missing_modules')}. Délégation à l'IA.")
+                # On passe à buildfix_node pour que l'IA tente de comprendre pourquoi tsc plante
+                pass
             
         if has_structure_errors:
             logger.warning("🔨 Manque de fichiers structuraux : route vers impl_node (PATCH).")
