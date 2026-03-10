@@ -62,6 +62,9 @@ class AgentState(TypedDict):
     # Checklist des sous-tâches
     subtask_checklist: str
     
+    # Modules manquants détectés par les diagnostics (Auto-installation)
+    missing_modules: List[str]
+    
     # Statistiques de complétion (via TaskEnforcer)
     total_subtasks: int
     missing_subtasks: int
@@ -455,6 +458,25 @@ class SpecGraphManager:
                                   cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
                 except Exception as e:
                     logger.warning(f"⚠️ Install devDeps manquantes échoué : {e}")
+                    
+            # ─── AUTO-RÉSOLUTION DES ERREURS TSC (Cannot find module 'X') ───
+            tsc_missing_modules = state.get("missing_modules", [])
+            if tsc_missing_modules:
+                # Filtrer ceux déjà installés pour ne pas boucler
+                modules_to_install = [m for m in tsc_missing_modules if m not in installed]
+                if modules_to_install:
+                    logger.warning(f"🚀 Auto-resolution TSC: installation de {modules_to_install}")
+                    try:
+                        subprocess.run(["npm", "install", "--save"] + modules_to_install, 
+                                      cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                        
+                        # Tenter d'installer les types correspondants (très fréquent en TS)
+                        types_to_install = [f"@types/{m}" for m in modules_to_install if not m.startswith('@')]
+                        if types_to_install:
+                            subprocess.run(["npm", "install", "--save-dev"] + types_to_install, 
+                                          cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                    except Exception as e:
+                        logger.error(f"⚠️ Échec de l'auto-résolution des modules TSC : {e}")
         
         return {"validation_status": "DEPS_INSTALLED" if found_pkg else "NO_PACKAGE_JSON"}
 
@@ -692,8 +714,10 @@ class SpecGraphManager:
     def diagnostic_node(self, state: AgentState) -> dict:
         """Nœud : Diagnostics réels (tsc --noEmit sur le vrai projet)."""
         logger.info("🔍 Exécution des diagnostics réels...")
-        import subprocess
+        import subprocess, re
         reports = []
+        missing_modules = []
+        
         for d in [self.root, self.root / "backend", self.root / "frontend"]:
             if (d / "package.json").exists():
                 try:
@@ -705,13 +729,22 @@ class SpecGraphManager:
                     output = (res.stdout + "\n" + res.stderr).strip()
                     status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
                     reports.append(f"[TSC {d.name}] {status}\n{output}")
+                    
+                    # Détection des modules manquants : "Cannot find module 'express'"
+                    matches = re.findall(r"Cannot find module '([^']+)'", output)
+                    if matches:
+                        missing_modules.extend(matches)
+                        
                 except subprocess.TimeoutExpired:
                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTimeout après 120s")
                 except Exception as e:
                     reports.append(f"[TSC {d.name}] ❌ ÉCHEC\n{str(e)}")
         
         logger.info("🛠️ Diagnostics terminés.")
-        return {"terminal_diagnostics": "\n".join(reports)}
+        return {
+            "terminal_diagnostics": "\n".join(reports),
+            "missing_modules": list(set(missing_modules))
+        }
 
     def route_after_impl(self, state: AgentState) -> str:
         if state["validation_status"] == "REJETÉ":
@@ -725,10 +758,15 @@ class SpecGraphManager:
         """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles."""
         has_tsc_errors = "❌ ÉCHEC" in state.get("terminal_diagnostics", "")
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
+        has_missing_modules = len(state.get("missing_modules", [])) > 0
         
-        if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors or has_structure_errors):
+        if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors or has_structure_errors or has_missing_modules):
             logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
             return "verify_node"
+            
+        if has_missing_modules:
+            logger.warning(f"📦 Modules manquants détectés {state.get('missing_modules')}. Auto-installation via install_deps_node.")
+            return "install_deps_node"
             
         if has_structure_errors:
             logger.warning("🔨 Manque de fichiers structuraux : route vers impl_node (PATCH).")
@@ -767,9 +805,14 @@ class SpecGraphManager:
         self.graph_builder.add_edge("persist_node", "install_deps_node")
         self.graph_builder.add_edge("install_deps_node", "diagnostic_node")
         
-        # diagnostic → task_enforcer → route (buildfix ou verify)
+        # diagnostic → task_enforcer → route (buildfix, verify, impl, install_deps)
         self.graph_builder.add_edge("diagnostic_node", "task_enforcer_node")
-        self.graph_builder.add_conditional_edges("task_enforcer_node", self.route_after_enf, {"buildfix_node": "buildfix_node", "verify_node": "verify_node"})
+        self.graph_builder.add_conditional_edges("task_enforcer_node", self.route_after_enf, {
+            "buildfix_node": "buildfix_node", 
+            "verify_node": "verify_node",
+            "impl_node": "impl_node",
+            "install_deps_node": "install_deps_node"
+        })
         
         # buildfix → install_deps (re-run npm install après correction)
         self.graph_builder.add_edge("buildfix_node", "install_deps_node")
