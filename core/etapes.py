@@ -218,6 +218,30 @@ class EtapeManager:
             elif (check_root / prefix / clean_path).exists():
                 return True
         
+        # 4. Fuzzy match : normaliser le nom de fichier pour gérer les variantes
+        #    healthcheck.controller.ts ↔ healthcheckController.ts ↔ health-check.controller.ts
+        def normalize_name(name: str) -> str:
+            """Normalise un nom de fichier en retirant dots/hyphens/underscores et en lowercase."""
+            stem = name.rsplit('.', 1)[0] if '.' in name else name  # Retirer l'extension
+            ext = name.rsplit('.', 1)[1] if '.' in name else ''
+            normalized = stem.replace('.', '').replace('-', '').replace('_', '').lower()
+            return f"{normalized}.{ext}" if ext else normalized
+        
+        # Trouver le dossier parent attendu et vérifier son contenu
+        target = Path(clean_path)
+        target_normalized = normalize_name(target.name)
+        
+        # Chercher dans les dossiers candidats
+        candidate_dirs = [check_root / target.parent]
+        for prefix in prefixes:
+            candidate_dirs.append(check_root / prefix / target.parent)
+        
+        for candidate_dir in candidate_dirs:
+            if candidate_dir.exists() and candidate_dir.is_dir():
+                for existing_file in candidate_dir.iterdir():
+                    if normalize_name(existing_file.name) == target_normalized:
+                        return True
+        
         return False
 
     def _dependency_installed(self, check_root: Path, dep_name: str) -> bool:
