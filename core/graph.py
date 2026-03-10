@@ -46,6 +46,7 @@ class AgentState(TypedDict):
     alertes: str # Alertes détectées
     feedback_correction: str # Instructions si rejeté
     terminal_diagnostics: str # Erreurs réelles du terminal (build, lint, etc.)
+    existing_code_snapshot: str # Fichiers réels lus depuis le disque (pour le mode PATCH)
     
     # Gestion des erreurs et boucle
     error_count: int 
@@ -254,6 +255,29 @@ class SpecGraphManager:
                 "last_error": error_msg
             }
 
+    def _read_existing_code(self) -> str:
+        """Lit les fichiers réels du projet sur disque pour le mode PATCH."""
+        import os
+        blocks = []
+        extensions = ('.ts', '.tsx', '.js', '.jsx', '.json')
+        ignore_dirs = {'node_modules', 'dist', '.git', '__pycache__', '.speckit'}
+        
+        for root_dir, dirs, files in os.walk(str(self.root)):
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            for f in files:
+                if f.endswith(extensions):
+                    abs_path = os.path.join(root_dir, f)
+                    rel_path = os.path.relpath(abs_path, str(self.root)).replace('\\', '/')
+                    try:
+                        content = open(abs_path, 'r', encoding='utf-8').read()
+                        blocks.append(f"// Fichier : {rel_path}\n{content}")
+                    except Exception:
+                        pass
+        
+        snapshot = "\n\n".join(blocks)
+        logger.info(f"📸 Snapshot disque : {len(blocks)} fichiers lus.")
+        return snapshot
+
     def impl_node(self, state: AgentState) -> dict:
         """Nœud 2 : Génération de code pur (Exécutant)."""
         logger.info(f"💻 Début de la Génération de code pour la tâche : {state['target_task']}")
@@ -263,11 +287,17 @@ class SpecGraphManager:
         
         prompt_text = self._load_prompt("subagent_impl.prompt")
         
-        # Si on revient d'une erreur (feedback_correction n'est pas vide), on l'ajoute
-        if state.get("feedback_correction"):
-            logger.warning("🔄 Application des corrections demandées par l'Auditeur.")
+        # ─── MODE PATCH : Sur les retries, injecter le code réel du disque ───
+        is_patch_mode = bool(state.get("feedback_correction"))
+        existing_snapshot = ""
+        
+        if is_patch_mode:
+            logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
+            existing_snapshot = self._read_existing_code()
             prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{feedback_correction}"
-            
+            prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{existing_code_snapshot}"
+            prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
+        
         parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
         prompt_text += "\n\n{format_instructions}"
         
@@ -290,15 +320,24 @@ class SpecGraphManager:
                 "design_spec": state.get("design_spec", "Non générée"),
                 "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
                 "user_instruction": state.get("user_instruction", ""),
+                "existing_code_snapshot": existing_snapshot,
                 "format_instructions": parser.get_format_instructions()
             })
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
-            logger.info("✅ Génération de code terminée.")
+            new_code = result.get("code", "")
+            
+            # En PATCH mode, merger avec le code existant au lieu de remplacer
+            if is_patch_mode and state.get("code_to_verify"):
+                new_code = self._merge_code(state["code_to_verify"], new_code)
+                logger.info("✅ PATCH appliqué (merge avec le code existant).")
+            else:
+                logger.info("✅ Génération de code terminée.")
             
             return {
-                "code_to_verify": result.get("code", ""),
+                "code_to_verify": new_code,
                 "impact_fichiers": result.get("impact_fichiers", []),
+                "existing_code_snapshot": existing_snapshot,
                 "last_error": "",
                 "validation_status": "GENERATED"
             }
@@ -351,9 +390,19 @@ class SpecGraphManager:
 
     def verify_node(self, state: AgentState) -> dict:
         """Nœud 3 : Audit de sécurité et conformité finale."""
-        if state.get("error_count", 0) >= 3:
+        if state.get("error_count", 0) >= MAX_RETRIES:
             logger.error("🛑 Limite atteinte")
             return {"validation_status": "REJETÉ", "alertes": "Limite de tentatives atteinte."}
+
+        # Rafraîchir le file_tree depuis le disque pour un audit précis
+        import os
+        fresh_tree = []
+        ignore = {'node_modules', 'dist', '.git', '__pycache__'}
+        for root_dir, dirs, files in os.walk(str(self.root)):
+            dirs[:] = [d for d in dirs if d not in ignore]
+            for f in files:
+                fresh_tree.append(os.path.relpath(os.path.join(root_dir, f), str(self.root)).replace('\\', '/'))
+        state = {**state, "file_tree": "\n".join(fresh_tree)}
 
         logger.info(f"🛡️ Début de l'Audit pour le code généré.")
         
@@ -569,18 +618,32 @@ class SpecGraphManager:
 
     def route_after_diagnostic(self, state: AgentState) -> str:
         diag = state.get("terminal_diagnostics", "")
-        if ("❌ ÉCHEC" in diag or "❌ ERREUR" in diag) and state.get("error_count", 0) < 3:
+        if "❌ ÉCHEC" in diag and state.get("error_count", 0) < MAX_RETRIES:
             return "buildfix_node"
         return "task_enforcer_node"
             
     def diagnostic_node(self, state: AgentState) -> dict:
-        logger.info("🛠️ Diagnostics terminés.")
+        """Nœud : Diagnostics réels (tsc --noEmit sur le vrai projet)."""
+        logger.info("🔍 Exécution des diagnostics réels...")
         import subprocess
         reports = []
         for d in [self.root, self.root / "backend", self.root / "frontend"]:
             if (d / "package.json").exists():
-                res = subprocess.run("npx --yes tsc --noEmit", shell=True, capture_output=True, text=True, cwd=str(d))
-                reports.append(f"TS {d.name}: {'✅' if res.returncode==0 else '❌'}\n{res.stdout}")
+                try:
+                    res = subprocess.run(
+                        "npx --yes tsc --noEmit --pretty false",
+                        shell=True, capture_output=True, text=True,
+                        cwd=str(d), timeout=120
+                    )
+                    output = (res.stdout + "\n" + res.stderr).strip()
+                    status = "✅" if res.returncode == 0 else "❌ ÉCHEC"
+                    reports.append(f"[TSC {d.name}] {status}\n{output}")
+                except subprocess.TimeoutExpired:
+                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTimeout après 120s")
+                except Exception as e:
+                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\n{str(e)}")
+        
+        logger.info("🛠️ Diagnostics terminés.")
         return {"terminal_diagnostics": "\n".join(reports)}
 
     def route_after_impl(self, state: AgentState) -> str:

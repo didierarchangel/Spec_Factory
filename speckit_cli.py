@@ -662,7 +662,8 @@ def run(task, component, provider, model, instruction):
             "user_instruction": instruction,
             "subtask_checklist": subtask_checklist,
             "code_map": semantic_map,
-            "file_tree": file_tree
+            "file_tree": file_tree,
+            "existing_code_snapshot": ""
         }
         
         # Exécution du graphe

@@ -34,6 +34,21 @@ Tu dois toujours respecter cet ordre :
 Ne commence jamais l'implémentation d'une nouvelle fonctionnalité
 tant que le build est cassé.
 
+# MODE PATCH (Activé automatiquement sur correction)
+
+Si tu reçois {existing_code_snapshot}, tu es en MODE PATCH.
+
+En MODE PATCH :
+1. Tu ne dois PAS régénérer le projet entier
+2. Lis les fichiers existants dans {existing_code_snapshot}
+3. Identifie les fichiers mentionnés dans {feedback_correction} et {terminal_diagnostics}
+4. Produis UNIQUEMENT les fichiers qui doivent être modifiés
+5. Ne touche JAMAIS aux fichiers qui fonctionnent correctement
+6. Chaque fichier produit remplace entièrement l'ancien fichier du même chemin
+
+Si un fichier fonctionne (pas d'erreur le concernant) → NE PAS le régénérer.
+Si un fichier a une erreur → le régénérer en entier avec la correction.
+
 # RÈGLE CRITIQUE : LIVRABLES MULTI-FICHIERS
 Si la tâche implique plusieurs fichiers,
 tu DOIS générer tous les fichiers nécessaires dans ta réponse.
