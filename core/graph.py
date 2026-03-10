@@ -616,11 +616,7 @@ class SpecGraphManager:
         
         return "\n\n".join(merged_blocks)
 
-    def route_after_diagnostic(self, state: AgentState) -> str:
-        diag = state.get("terminal_diagnostics", "")
-        if "❌ ÉCHEC" in diag and state.get("error_count", 0) < MAX_RETRIES:
-            return "buildfix_node"
-        return "task_enforcer_node"
+    # route_after_diagnostic supprimé — diagnostic va toujours vers task_enforcer
             
     def diagnostic_node(self, state: AgentState) -> dict:
         """Nœud : Diagnostics réels (tsc --noEmit sur le vrai projet)."""
@@ -655,11 +651,15 @@ class SpecGraphManager:
         return "persist_node"
 
     def route_after_enf(self, state: AgentState) -> str:
-        if state["validation_status"] == "STRUCTURE_KO":
+        """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles."""
+        has_tsc_errors = "❌ ÉCHEC" in state.get("terminal_diagnostics", "")
+        has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
+        
+        if has_tsc_errors or has_structure_errors:
             if state.get("error_count", 0) >= MAX_RETRIES:
-                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}) après échec TaskEnforcer.")
+                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}).")
                 return "verify_node"
-            return "impl_node"
+            return "buildfix_node"
         return "verify_node"
 
     def route_after_verify(self, state: AgentState) -> str:
@@ -689,10 +689,12 @@ class SpecGraphManager:
         self.graph_builder.add_edge("persist_node", "install_deps_node")
         self.graph_builder.add_edge("install_deps_node", "diagnostic_node")
         
-        self.graph_builder.add_conditional_edges("diagnostic_node", self.route_after_diagnostic, {"buildfix_node": "buildfix_node", "task_enforcer_node": "task_enforcer_node"})
-        self.graph_builder.add_edge("buildfix_node", "diagnostic_node")
+        # diagnostic → task_enforcer → route (buildfix ou verify)
+        self.graph_builder.add_edge("diagnostic_node", "task_enforcer_node")
+        self.graph_builder.add_conditional_edges("task_enforcer_node", self.route_after_enf, {"buildfix_node": "buildfix_node", "verify_node": "verify_node"})
         
-        self.graph_builder.add_conditional_edges("task_enforcer_node", self.route_after_enf, {"impl_node": "impl_node", "verify_node": "verify_node"})
+        # buildfix → install_deps (re-run npm install après correction)
+        self.graph_builder.add_edge("buildfix_node", "install_deps_node")
         
         self.graph_builder.add_conditional_edges("verify_node", self.route_after_verify, {END: END, "impl_node": "impl_node"})
 

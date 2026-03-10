@@ -64,14 +64,17 @@ Chaque agent `VERIFY` (Auditeur) rejettera automatiquement le travail de l'agent
 2. **Validation des Entrées** : Toute donnée provenant de l'utilisateur ou d'une API externe doit être typée et validée (Ex: *Pydantic*, *Zod*).
 3. **Séparation des Responsabilités (SOLID)** : Pas de logique métier complexe directement dans les routes de l'API.
 4. **Tolérance de démarrage** : Les règles de validation (Zod) et les middlewares de sécurité ne sont exigés qu'à partir de l'implémentation de la première route métier (CRUD). Les étapes de "Configuration" ou "Setup" sont exemptées si les bibliothèques sont présentes dans le package.json.
-5. **Score de Complétion** : Le score final d'audit est indexé sur la complétion réelle des tâches. Un code parfait (100) mais une checklist incomplète (ex: 2/5 tâches) résultera en un score final dégradé (ex: 40%).
+5. **Score de Complétion** : Le verdict final d'audit repose sur 2 sources de vérité synchronisées :
+    - **Diagnostic Runtime** : le terminal (`tsc --noEmit`) doit être ✅ sur tous les modules.
+    - **Checklist** : 100% des sous-tâches doivent être validées sur disque.
+    - L'Auditeur a l'**interdiction absolue** d'inventer des erreurs non présentes dans les diagnostics du terminal.
 
 ---
 
 ## 4. NORMES DE DÉVELOPPEMENT (COHÉRENCE)
-### 4.1 Backend (NestJS/TypeScript)
-* **Décorateurs** : Activer obligatoirement `experimentalDecorators: true` dans le `tsconfig.json`.
-* **Validation** : Toute API doit utiliser des DTO avec `class-validator` et `class-transformer`.
+### 4.1 Backend (Express/TypeScript)
+* **Validation** : Toute API doit utiliser des DTO avec **Zod** (schemas `camelCase`, types `PascalCase`).
+* **Décorateurs** : Interdiction d'utiliser `experimentalDecorators`. Le projet utilise Zod pour la validation, pas `class-validator`.
 * **Zéro Placeholder** : Tout code généré doit être complet et fonctionnel.
 
 ### 4.2 Frontend (React/Vite)

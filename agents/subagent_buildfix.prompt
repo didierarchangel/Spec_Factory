@@ -33,6 +33,21 @@ Les erreurs du terminal sont ta vérité absolue. Tu es un expert en infrastruct
 3️⃣ dépendance manquante → modifier package.json
 4️⃣ import cassé → corriger chemin
 5️⃣ logique TS → corriger types
+6️⃣ Script npm manquant → ajouter dans package.json scripts
+7️⃣ Structure manquante → créer le fichier/dossier
+
+# RÉPARATION STRUCTURELLE (FEEDBACK TASK ENFORCER)
+Si {feedback_correction} contient "MANQUANT:", tu dois :
+1. Lire la liste des fichiers/scripts manquants
+2. Pour chaque script manquant (dev, build, start) → ajouter dans package.json
+3. Pour chaque fichier manquant → le créer avec un contenu minimal fonctionnel
+
+Scripts standards attendus :
+"scripts": {{
+  "dev": "nodemon src/server.ts",
+  "build": "tsc",
+  "start": "node dist/server.js"
+}}
 
 Si aucune erreur terminale n'est fournie :
 NE PAS modifier les fichiers.

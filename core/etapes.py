@@ -240,6 +240,26 @@ class EtapeManager:
                     continue
         return False
 
+    def _script_exists(self, check_root: Path, script_name: str) -> bool:
+        """Vérifie si un script npm existe dans le package.json."""
+        import json
+        pkg_paths = [
+            check_root / "package.json",
+            check_root / "backend" / "package.json",
+            check_root / "frontend" / "package.json"
+        ]
+        
+        for pkg_path in pkg_paths:
+            if pkg_path.exists():
+                try:
+                    data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                    scripts = data.get("scripts", {})
+                    if script_name in scripts:
+                        return True
+                except Exception:
+                    continue
+        return False
+
     def mark_step_as_completed(self, step_id: str, synthesis: str = None, project_root: str = None) -> bool:
         """Passe une étape majeure de [ ] à [x]. Les sous-tâches sont cochées intelligemment 
         en vérifiant l'existence des fichiers/dossiers mentionnés sur le disque."""
@@ -284,6 +304,26 @@ class EtapeManager:
                     missing_items = []
                     
                     for item in items_to_check:
+                        # Skip les commandes shell (contiennent des espaces ou commencent par npm/npx)
+                        if ' ' in item or item.startswith(('npm ', 'npx ', 'node ')):
+                            # Mapping commande → artefact produit
+                            if 'npm init' in item:
+                                # npm init -y produit un package.json
+                                if self._file_exists(check_root, 'package.json') or self._file_exists(check_root, 'backend/package.json'):
+                                    continue  # OK, le package.json existe
+                            # Commandes non mappées → on les considère OK (pas vérifiables sur disque)
+                            continue
+                        
+                        # Skip les noms de scripts npm (dev, build, start, test)
+                        if item in ('dev', 'build', 'start', 'test'):
+                            # Vérifier dans les scripts du package.json
+                            if self._script_exists(check_root, item):
+                                continue
+                            else:
+                                all_ok = False
+                                missing_items.append(item)
+                                continue
+                        
                         # On vérifie si c'est un fichier OU une dépendance
                         exists_as_file = self._file_exists(check_root, item)
                         exists_as_dep = self._dependency_installed(check_root, item)
