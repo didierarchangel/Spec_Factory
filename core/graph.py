@@ -69,7 +69,7 @@ class AgentState(TypedDict):
 class SpecGraphManager:
     def __init__(self, model, project_root: str = "."):
         self.model = model
-        self.root = Path(project_root)
+        self.root = Path(project_root).resolve()
         # Les prompts sont internes au package
         self.prompts_dir = Path(__file__).parent.parent / "agents"
         
@@ -385,19 +385,7 @@ class SpecGraphManager:
             verdict = result["verdict_final"].upper()
             status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
             
-            # --- GROUND TRUTH : Vérification réelle sur DISQUE ---
-            from core.etapes import EtapeManager
-            etape_manager = EtapeManager(self.model, project_root=str(self.root))
-            
-            _, checked_count, total_count = etape_manager.mark_step_as_completed(
-                state["current_step"], 
-                synthesis=result.get("resume", ""),
-                project_root=str(self.root)
-            )
-            
-            task_score = int((checked_count / total_count * 100)) if total_count > 0 else 100
-            audit_score = int(result.get("score_conformite", 0))
-            final_score = min(audit_score, task_score)
+            final_score = int(result.get("score_conformite", 0))
             
             if status == "APPROUVÉ":
                 logger.info(f"✅ Code APPROUVÉ. Score: {final_score}")

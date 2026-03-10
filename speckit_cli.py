@@ -669,54 +669,42 @@ def run(task, component, provider, model, instruction):
         final_state = initial_state
         for output in graph_manager.app.stream(initial_state):
             for node_name, result in output.items():
-                click.echo(f"📍 Nœud [{node_name}] terminé.")
                 final_state.update(result)
         
-        # 5. Traitement du résultat final
-        if final_state.get("validation_status") == "APPROUVÉ":
+        # 5. Ground Truth : vérification réelle sur disque avant validation finale
+        gt_result = manager_etapes.mark_step_as_completed(target_id, synthesis="", project_root=".")
+        if isinstance(gt_result, tuple):
+            _, checked_count, total_count = gt_result
+        else:
+            checked_count, total_count = 0, 0
+        
+        task_complete = (checked_count == total_count) if total_count > 0 else True
+        audit_approved = final_state.get("validation_status") == "APPROUVÉ"
+        
+        if audit_approved and task_complete:
             click.echo("\n" + "="*50)
             click.echo("🛡️  RAPPORT D'AUDIT SPECKIT")
             click.echo("="*50)
             click.echo(f"⭐ Score : {final_state.get('score', 'N/A')}")
             click.echo(f"✅ Points forts : {final_state.get('points_forts', 'N/A')}")
             click.echo(f"⚠️  Alertes : {final_state.get('alertes', 'Aucune')}")
+            click.echo(f"📊 Sous-tâches : {checked_count}/{total_count}")
             click.echo("="*50 + "\n")
 
-            # Sauvegarde des fichiers
-            fm = FileManager()
+            # Les fichiers sont déjà sur disque grâce à persist_node
             code = final_state.get("code_to_verify", "")
-            
             if code:
-                written_files = fm.extract_and_write(code)
-                
-                if written_files:
-                    for file_path in written_files:
-                        click.echo(f"💾 Fichier sauvegardé : {file_path}")
-                else:
-                    # Fallback intelligent sur l'ancien comportement
-                    impacted = final_state.get("impact_fichiers", [])
-                    # On cherche le premier qui n'est pas un dossier (ne finit pas par / ou \)
-                    target_file = None
-                    for imp in impacted:
-                        clean_path = imp.split(":")[-1].strip()
-                        if not (clean_path.endswith('/') or clean_path.endswith('\\')):
-                            target_file = clean_path
-                            break
-                    
-                    if target_file and fm.safe_write(target_file, code):
-                        click.echo(f"💾 Code sauvegardé (fallback) dans : {target_file}")
-                    else:
-                        click.echo("⚠️ Impossible de déterminer un fichier de destination valide (échec parsing + pas de fichier cible trouvé).")
+                click.echo("💾 Fichiers déjà persistés par le pipeline.")
             else:
                 click.echo("⚠️ Aucun code généré trouvé.")
             
-            # Mise à jour du statut avec synthèse pour l'historique (TOUJOURS, même si le code est vide)
-            synthesis = f"⭐⭐ Score : {final_state.get('score', 'N/A')}\n"
+            # Mise à jour du statut avec synthèse pour l'historique
+            synthesis = f"⭐ Score : {final_state.get('score', 'N/A')}\n"
             synthesis += f"✅ Points forts : {final_state.get('points_forts', 'N/A')}\n"
             synthesis += f"⚠️ Alertes : {final_state.get('alertes', 'Aucune')}"
             
             manager_etapes.mark_step_as_completed(target_id, synthesis=synthesis)
-            click.echo(f"✅ Tâche {target_id} marquée comme terminée dans etapes.md et archivée dans EtapesAdd.md")
+            click.echo(f"✅ Tâche {target_id} marquée comme terminée dans etapes.md")
             
             # Mise à jour du verrou .spec-lock.json
             lock_file = Path(".spec-lock.json")
