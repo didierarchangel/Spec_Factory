@@ -725,8 +725,13 @@ def run(task, component, provider, model, instruction):
             click.echo("\n" + "!"*50)
             click.echo("❌ ÉCHEC DE L'AUDIT")
             click.echo("!"*50)
-            click.echo(f"Raison : {final_state.get('alertes', 'Inconnue')}")
-            click.echo(f"Action corrective : {final_state.get('feedback_correction', 'N/A')}")
+            if not audit_approved:
+                click.echo(f"Raison Audit : {final_state.get('alertes', 'Aucune alerte')}")
+                feedback = final_state.get('feedback_correction', '')
+                if feedback:
+                    click.echo(f"Action corrective : {feedback}")
+            if not task_complete:
+                click.echo(f"Raison Checklist : {checked_count}/{total_count} sous-tâches validées")
             click.echo("!"*50 + "\n")
         
     except Exception as e:

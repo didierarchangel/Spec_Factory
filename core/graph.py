@@ -369,21 +369,74 @@ class SpecGraphManager:
         }
 
     def install_deps_node(self, state: AgentState) -> dict:
-        """Nœud : Installation des dépendances npm."""
-        import subprocess
+        """Nœud : Installation des dépendances npm + vérification déterministe."""
+        import subprocess, json, re
         logger.info("📦 Installation des dépendances (npm install)...")
         
         found_pkg = False
         search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
         
         for target_dir in search_dirs:
-            if (target_dir / "package.json").exists():
-                found_pkg = True
-                logger.info(f"⏳ npm install dans {target_dir.name or 'racine'}...")
+            pkg_path = target_dir / "package.json"
+            if not pkg_path.exists():
+                continue
+            
+            found_pkg = True
+            logger.info(f"⏳ npm install dans {target_dir.name or 'racine'}...")
+            try:
+                subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
+            except Exception as e:
+                logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
+            
+            # ─── FILET DE SÉCURITÉ : vérifier les deps mentionnées dans la checklist ───
+            checklist = state.get("subtask_checklist", "")
+            if not checklist:
+                continue
+            
+            # Extraire les noms de packages des backticks dans la checklist
+            # Ex: "`express`, `mongoose`, `jsonwebtoken`, `bcryptjs`"
+            checklist_deps = set(re.findall(r'`([a-z@][a-z0-9\-_@/\.]*)`', checklist, re.IGNORECASE))
+            
+            # Filtrer : garder seulement ce qui ressemble à un package npm (pas un fichier)
+            npm_packages = {d for d in checklist_deps 
+                          if not any(d.endswith(ext) for ext in ('.ts', '.tsx', '.js', '.json', '.md'))
+                          and '/' not in d or d.startswith('@')}
+            
+            if not npm_packages:
+                continue
+            
+            # Lire le package.json pour voir ce qui est déjà installé
+            try:
+                data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                installed = set(data.get("dependencies", {}).keys()) | set(data.get("devDependencies", {}).keys())
+            except Exception:
+                installed = set()
+            
+            # Identifier les packages manquants
+            # Packages connus comme devDependencies
+            dev_packages = {'typescript', 'ts-node', 'nodemon', 'eslint', 'prettier', 
+                           'jest', 'ts-jest', 'vitest', 'supertest'}
+            
+            missing_prod = [p for p in npm_packages - installed 
+                           if p not in dev_packages and not p.startswith('@types/')]
+            missing_dev = [p for p in npm_packages - installed 
+                          if p in dev_packages or p.startswith('@types/')]
+            
+            if missing_prod:
+                logger.info(f"🔧 Deps manquantes (prod) : {missing_prod}")
                 try:
-                    subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
+                    subprocess.run(["npm", "install", "--save"] + missing_prod, 
+                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
                 except Exception as e:
-                    logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
+                    logger.warning(f"⚠️ Install deps manquantes échoué : {e}")
+            
+            if missing_dev:
+                logger.info(f"🔧 Deps manquantes (dev) : {missing_dev}")
+                try:
+                    subprocess.run(["npm", "install", "--save-dev"] + missing_dev, 
+                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                except Exception as e:
+                    logger.warning(f"⚠️ Install devDeps manquantes échoué : {e}")
         
         return {"validation_status": "DEPS_INSTALLED" if found_pkg else "NO_PACKAGE_JSON"}
 
