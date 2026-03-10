@@ -16,6 +16,9 @@ from core.GraphicDesign import GraphicDesign
 
 logger = logging.getLogger(__name__)
 
+# ─── 0. Configuration des Limites ──────────────────────────────────────────────────
+MAX_RETRIES = 3
+
 # ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
 
 class AgentState(TypedDict):
@@ -358,7 +361,8 @@ class SpecGraphManager:
             return {
                 "validation_status": "REJETÉ",
                 "feedback_correction": f"TypeScript Errors:\n{errors}",
-                "error_count": new_error_count
+                "error_count": new_error_count,
+                "terminal_diagnostics": errors
             }
         
         return {"validation_status": "TS_OK"}
@@ -559,7 +563,39 @@ class SpecGraphManager:
 
     def _merge_code(self, base: str, delta: str) -> str:
         if not delta: return base
-        return delta # Simplification pour le merge (le buildfix renvoie souvent le fichier entier)
+        import re
+        pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
+        
+        def parse_blocks(code):
+            parts = re.split(pattern, code)
+            blocks = {}
+            if len(parts) > 1:
+                for i in range(1, len(parts), 2):
+                    filename = parts[i].strip()
+                    content = parts[i+1].strip()
+                    blocks[filename] = content
+            elif code.strip() and not re.search(pattern, code):
+                # Fallback pour le cas où delta ne contient pas de marqueurs de fichiers (si un seul fichier est retourné sans marqueur)
+                # Mais BuildFix est censé retourner avec marqueurs. Dans le doute, on n'écrase pas tout si on ne peut pas parser.
+                pass
+            return blocks
+
+        base_blocks = parse_blocks(base)
+        delta_blocks = parse_blocks(delta)
+        
+        if not delta_blocks and delta.strip():
+             # Si delta n'a pas pu être parsé mais n'est pas vide, c'est peut-être un fichier unique.
+             # On essaie de deviner si c'est le cas (peu probable avec Speckit).
+             pass
+
+        # Update base with delta
+        base_blocks.update(delta_blocks)
+        
+        merged_blocks = []
+        for filename, content in base_blocks.items():
+            merged_blocks.append(f"// Fichier : {filename}\n{content}")
+        
+        return "\n\n".join(merged_blocks)
 
     def route_after_diagnostic(self, state: AgentState) -> str:
         diag = state.get("terminal_diagnostics", "")
@@ -577,10 +613,33 @@ class SpecGraphManager:
                 reports.append(f"TS {d.name}: {'✅' if res.returncode==0 else '❌'}\n{res.stdout}")
         return {"terminal_diagnostics": "\n".join(reports)}
 
-    def route_after_verify(self, state: AgentState) -> str:
-        if state.get("validation_status") == "APPROUVÉ" or state.get("error_count", 0) >= 3:
-            return END
-        return "impl_node"
+    def route_after_ts(self, state: AgentState) -> str:
+        if state["validation_status"] == "REJETÉ":
+            if state.get("error_count", 0) >= MAX_RETRIES:
+                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}) après échec TypeScript.")
+                return "verify_node" # On va vers verify pour le constat final
+            
+            # Si on a des erreurs typées, on tente BuildFix
+            if state.get("terminal_diagnostics"):
+                return "buildfix_node"
+            return "impl_node"
+        return "diagnostic_node"
+
+    def route_after_impl(self, state: AgentState) -> str:
+        if state["validation_status"] == "REJETÉ":
+            if state.get("error_count", 0) >= MAX_RETRIES:
+                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}) après échec Génération.")
+                return "verify_node"
+            return "impl_node"
+        return "persist_node"
+
+    def route_after_enf(self, state: AgentState) -> str:
+        if state["validation_status"] == "STRUCTURE_KO":
+            if state.get("error_count", 0) >= MAX_RETRIES:
+                logger.error(f"🛑 Limite de tentatives atteinte ({MAX_RETRIES}) après échec TaskEnforcer.")
+                return "verify_node"
+            return "impl_node"
+        return "verify_node"
 
     def _build_graph(self):
         self.graph_builder.add_node("analysis_node", self.analysis_node)
@@ -600,29 +659,17 @@ class SpecGraphManager:
         self.graph_builder.add_edge("code_map_node", "GraphicDesign_node")
         self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
         
-        # Routage après Impl : Si REJETÉ (erreur technique), on boucle
-        def route_after_impl(state):
-            if state["validation_status"] == "REJETÉ": return "impl_node"
-            return "persist_node"
-        self.graph_builder.add_conditional_edges("impl_node", route_after_impl, {"impl_node": "impl_node", "persist_node": "persist_node"})
+        self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "persist_node": "persist_node", "verify_node": "verify_node"})
         
         self.graph_builder.add_edge("persist_node", "install_deps_node")
         self.graph_builder.add_edge("install_deps_node", "typescript_node")
         
-        # Routage après TS Validation
-        def route_after_ts(state):
-            if state["validation_status"] == "REJETÉ": return "impl_node"
-            return "diagnostic_node"
-        self.graph_builder.add_conditional_edges("typescript_node", route_after_ts, {"impl_node": "impl_node", "diagnostic_node": "diagnostic_node"})
+        self.graph_builder.add_conditional_edges("typescript_node", self.route_after_ts, {"impl_node": "impl_node", "diagnostic_node": "diagnostic_node", "verify_node": "verify_node"})
         
         self.graph_builder.add_conditional_edges("diagnostic_node", self.route_after_diagnostic, {"buildfix_node": "buildfix_node", "task_enforcer_node": "task_enforcer_node"})
         self.graph_builder.add_edge("buildfix_node", "diagnostic_node")
         
-        # Routage après Enforcer
-        def route_after_enf(state):
-            if state["validation_status"] == "STRUCTURE_KO": return "impl_node"
-            return "verify_node"
-        self.graph_builder.add_conditional_edges("task_enforcer_node", route_after_enf, {"impl_node": "impl_node", "verify_node": "verify_node"})
+        self.graph_builder.add_conditional_edges("task_enforcer_node", self.route_after_enf, {"impl_node": "impl_node", "verify_node": "verify_node"})
         
         self.graph_builder.add_conditional_edges("verify_node", self.route_after_verify, {END: END, "impl_node": "impl_node"})
 
