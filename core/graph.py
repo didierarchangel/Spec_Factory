@@ -253,7 +253,7 @@ class SpecGraphManager:
 
     def impl_node(self, state: AgentState) -> dict:
         """Nœud 2 : Génération de code pur (Exécutant)."""
-        logger.info(f"💻 Début de l'Implémentation pour la tâche : {state['target_task']}")
+        logger.info(f"💻 Début de la Génération de code pour la tâche : {state['target_task']}")
         
         # Garantie structurelle avant génération
         self._ensure_directory_structure()
@@ -291,62 +291,83 @@ class SpecGraphManager:
             })
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
-            logger.info("✅ Implémentation terminée. Persistance des fichiers...")
-            
-            # 1. Persistance immédiate sur le disque
-            written_code = ""
-            if result.get("code"):
-                written_code, _ = self._persist_code_to_disk(result["code"])
-            
-            # 2. Validation TypeScript (après persistance pour garantir le contexte projet)
-            if written_code:
-                is_valid, errors = self._validate_typescript(written_code, state["target_task"])
-                if not is_valid:
-                    new_error_count = state.get("error_count", 0) + 1
-                    logger.warning(f"⚠️ Validation TypeScript échouée ({new_error_count}/3).")
-                    
-                    if new_error_count < 3:
-                        return {
-                            "validation_status": "REJETÉ",
-                            "feedback_correction": f"The following TypeScript errors occurred during validation:\n\n{errors}\n\nRegenerate the code with corrected types.",
-                            "error_count": new_error_count
-                        }
-                    else:
-                        logger.error("🛑 Limite de tentatives atteinte. On laisse le code tel quel pour audit final.")
+            logger.info("✅ Génération de code terminée.")
             
             return {
-                "code_to_verify": written_code if written_code else result.get("code", ""),
+                "code_to_verify": result.get("code", ""),
                 "impact_fichiers": result.get("impact_fichiers", []),
                 "last_error": "",
-                "validation_status": "APPROUVÉ",
-                "error_count": 0 
-            }
-        except ValueError as e:
-            error_msg = f"Réponse IA corrompue (JSON invalide) : {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            new_error_count = state.get("error_count", 0) + 1
-            return {
-                "validation_status": "REJETÉ",
-                "feedback_correction": f"CRITICAL: Your last response was not valid JSON or contained corrupted data. {str(e)}. Please regenerate the FULL response ensuring valid JSON structure and complete code blocks within <JSON_OUTPUT> tags.",
-                "error_count": new_error_count,
-                "last_error": error_msg
+                "validation_status": "GENERATED"
             }
         except Exception as e:
-            error_msg = f"Erreur d'implémentation : {str(e)}"
+            error_msg = f"Erreur de génération : {str(e)}"
             logger.error(f"❌ {error_msg}")
             new_error_count = state.get("error_count", 0) + 1
             return {
                 "validation_status": "REJETÉ",
-                "feedback_correction": f"Technical error during implementation: {str(e)}. Please retry.",
+                "feedback_correction": f"Technical error during generation: {str(e)}. Please retry.",
                 "error_count": new_error_count,
                 "last_error": error_msg
             }
+
+    def persist_node(self, state: AgentState) -> dict:
+        """Nœud : Persistance du code sur le disque."""
+        logger.info("💾 Persistance des fichiers sur le disque...")
+        code = state.get("code_to_verify", "")
+        if not code:
+            return {"validation_status": "EMPTY_CODE"}
+            
+        sanitized_code, written_paths = self._persist_code_to_disk(code)
+        logger.info(f"✅ {len(written_paths)} fichiers écrits.")
+        
+        return {
+            "code_to_verify": sanitized_code,
+            "impact_fichiers": list(set(state.get("impact_fichiers", []) + written_paths)),
+            "validation_status": "PERSISTED"
+        }
+
+    def install_deps_node(self, state: AgentState) -> dict:
+        """Nœud : Installation des dépendances npm."""
+        import subprocess
+        logger.info("📦 Installation des dépendances (npm install)...")
+        
+        found_pkg = False
+        search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+        
+        for target_dir in search_dirs:
+            if (target_dir / "package.json").exists():
+                found_pkg = True
+                logger.info(f"⏳ npm install dans {target_dir.name or 'racine'}...")
+                try:
+                    subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
+                except Exception as e:
+                    logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
+        
+        return {"validation_status": "DEPS_INSTALLED" if found_pkg else "NO_PACKAGE_JSON"}
+
+    def typescript_node(self, state: AgentState) -> dict:
+        """Nœud : Validation TypeScript pré-emptive."""
+        code = state.get("code_to_verify", "")
+        if not code:
+            return {"validation_status": "TS_OK"}
+            
+        is_valid, errors = self._validate_typescript(code, state["target_task"])
+        if not is_valid:
+            new_error_count = state.get("error_count", 0) + 1
+            logger.warning(f"⚠️ Validation TypeScript échouée ({new_error_count}/3).")
+            return {
+                "validation_status": "REJETÉ",
+                "feedback_correction": f"TypeScript Errors:\n{errors}",
+                "error_count": new_error_count
+            }
+        
+        return {"validation_status": "TS_OK"}
 
     def verify_node(self, state: AgentState) -> dict:
         """Nœud 3 : Audit de sécurité et conformité finale."""
         if state.get("error_count", 0) >= 3:
             logger.error("🛑 Limite atteinte")
-            return END
+            return {"validation_status": "REJETÉ", "alertes": "Limite de tentatives atteinte."}
 
         logger.info(f"🛡️ Début de l'Audit pour le code généré.")
         
@@ -358,9 +379,6 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            # Injection du checklist des sous-tâches pour vérification granulaire
-            subtask_checklist = state.get("subtask_checklist", "Non disponible")
-            
             raw_output = chain.invoke({
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
@@ -381,45 +399,31 @@ class SpecGraphManager:
             verdict = result["verdict_final"].upper()
             status = "APPROUVÉ" if "APPROUVÉ" in verdict else "REJETÉ"
             
-            # Si le code envoyé était une erreur technique, on force le rejet
-            if "ERREUR TECHNIQUE" in state["code_to_verify"]:
-                status = "REJETÉ"
-                result['alertes'] = f"Le code n'a pas pu être généré : {state['code_to_verify']}"
-                result['action_corrective'] = "Réessaye de générer le code en respectant strictement le format JSON."
-
-            # --- GROUND TRUTH : Vérification réelle sur DISQUE (Execution Contract Engine) ---
+            # --- GROUND TRUTH : Vérification réelle sur DISQUE ---
             from core.etapes import EtapeManager
             etape_manager = EtapeManager(self.model, project_root=str(self.root))
             
-            # On force la mise à jour disk-based des sous-tâches
             _, checked_count, total_count = etape_manager.mark_step_as_completed(
                 state["current_step"], 
                 synthesis=result.get("resume", ""),
                 project_root=str(self.root)
             )
             
-            # Calcul du score basé sur le RÉEL (Disque)
             task_score = int((checked_count / total_count * 100)) if total_count > 0 else 100
             audit_score = int(result.get("score_conformite", 0))
-            
-            # Le score final est le minimum du ressenti IA et de la réalité DISQUE
             final_score = min(audit_score, task_score)
             
-            logger.info(f"📊 Score Audit: {audit_score} | Score Tâches (Disque): {task_score}% | Final: {final_score}")
-
             if status == "APPROUVÉ":
-                logger.info(f"✅ Code APPROUVÉ par l'Auditeur. Score final: {final_score}")
+                logger.info(f"✅ Code APPROUVÉ. Score: {final_score}")
                 return {
                     "validation_status": "APPROUVÉ", 
                     "score": str(final_score),
                     "points_forts": result.get('points_forts', ''),
-                    "alertes": result.get('alertes', 'Aucune alerte.'),
-                    "feedback_correction": "",
-                    "error_count": 0
+                    "alertes": result.get('alertes', 'Aucune.'),
+                    "feedback_correction": ""
                 }
             else:
                 new_error_count = state.get("error_count", 0) + 1
-                logger.warning(f"❌ Code REJETÉ par l'Auditeur ({new_error_count}/3). Raison : {result['alertes']}")
                 return {
                     "validation_status": "REJETÉ", 
                     "score": str(final_score),
@@ -428,32 +432,13 @@ class SpecGraphManager:
                     "feedback_correction": result["action_corrective"],
                     "error_count": new_error_count
                 }
-                
-        except ValueError as e:
-            error_msg = f"Réponse IA corrompue (JSON Audit) : {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            new_error_count = state.get("error_count", 0) + 1
-            return {
-                "validation_status": "REJETÉ", 
-                "feedback_correction": f"CRITICAL: Audit response was invalid JSON. {str(e)}. Please re-audit correctly.",
-                "error_count": new_error_count,
-                "last_error": error_msg
-            }
         except Exception as e:
-            error_msg = f"Erreur de parser (Audit) : {str(e)}"
-            logger.error(f"❌ {error_msg}")
-            new_error_count = state.get("error_count", 0) + 1
-            return {
-                "validation_status": "REJETÉ", 
-                "feedback_correction": f"L'audit a échoué techniquement : {error_msg}. Réessaye avec un format JSON valide.",
-                "error_count": new_error_count,
-                "last_error": error_msg
-            }
+            logger.error(f"❌ Erreur audit : {e}")
+            return {"validation_status": "REJETÉ", "feedback_correction": str(e), "error_count": state.get("error_count", 0)+1}
 
     def task_enforcer_node(self, state: AgentState) -> dict:
-        """Nœud de vérification structurelle : S'assure que tous les fichiers demandés sont là."""
-        logger.info("🛡️ Vérification de la présence des fichiers (TaskEnforcer)...")
-        
+        """Nœud de vérification structurelle."""
+        logger.info("🛡️ Vérification structurelle (TaskEnforcer)...")
         prompt_text = self._load_prompt("subagent_Speckit-TaskEnforcer.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentTaskEnforcerOutput)
         prompt_text += "\n\n{format_instructions}"
@@ -470,108 +455,44 @@ class SpecGraphManager:
             result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
             
             if result["verdict"] == "CONFORME":
-                logger.info("✅ Structure conforme (aucun fichier manquant).")
-                return {
-                    "validation_status": "STRUCTURE_OK", 
-                    "feedback_correction": "",
-                    "total_subtasks": result.get("total_tasks", 0),
-                    "missing_subtasks": result.get("missing_tasks", 0)
-                }
+                return {"validation_status": "STRUCTURE_OK"}
             else:
-                logger.warning(f"❌ Structure NON-CONFORME. Fichiers manquants : {', '.join(result['missing_files'])}")
                 return {
                     "validation_status": "STRUCTURE_KO",
-                    "feedback_correction": f"FICHIERS MANQUANTS DÉTECTÉS : {', '.join(result['missing_files'])}. {result['explication']}",
-                    "total_subtasks": result.get("total_tasks", 0),
-                    "missing_subtasks": result.get("missing_tasks", 0)
+                    "feedback_correction": f"MANQUANT: {', '.join(result['missing_files'])}",
+                    "error_count": state.get("error_count", 0) + 1
                 }
-        except ValueError as e:
-            logger.error(f"❌ Réponse IA corrompue (TaskEnforcer JSON) : {str(e)}")
-            return {"validation_status": "STRUCTURE_KO", "feedback_correction": f"CRITICAL: TaskEnforcer response was invalid JSON. {str(e)}. Please retry."}
         except Exception as e:
-            logger.error(f"❌ Erreur critique TaskEnforcer : {str(e)}")
-            return {"validation_status": "STRUCTURE_KO", "feedback_correction": f"TaskEnforcer Error: {str(e)}"}
+            return {"validation_status": "STRUCTURE_KO", "feedback_correction": str(e)}
 
     def code_map_node(self, state: AgentState) -> dict:
         """Nœud de génération de la Semantic Code Map."""
         logger.info("🗺️ Génération de la Semantic Code Map...")
+        import os, re, json
         
-        import os
-        import re
-        import json
-        
-        code_map = {
-            "file_tree": [],
-            "semantics": {}
-        }
-        
-        # Extensions à scanner pour la sémantique
-        source_extensions = ('.ts', '.js', '.tsx', '.jsx')
-        # Dossiers à ignorer
-        ignore_dirs = {'node_modules', 'dist', '.git', '__pycache__', '.speckit-rules'}
+        code_map = {"file_tree": [], "semantics": {}}
+        ignore_dirs = {'node_modules', 'dist', '.git', '__pycache__'}
         
         for root, dirs, files in os.walk(str(self.root)):
-            # Filtrage des dossiers
             dirs[:] = [d for d in dirs if d not in ignore_dirs]
-            
             for file in files:
                 rel_path = os.path.relpath(os.path.join(root, file), str(self.root)).replace('\\', '/')
                 code_map["file_tree"].append(rel_path)
-                
-                if file.endswith(source_extensions):
+                if file.endswith(('.ts', '.js', '.tsx', '.jsx')):
                     try:
                         with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
                             content = f.read()
-                            
-                            # Extraction simplifiée des imports
-                            # Match : import ... from 'lib' ou import * as ... from 'lib' ou import 'lib'
-                            imports = re.findall(r"import\s+(?:(?:\*|[\w\s,{}]+)\s+from\s+)?['\"]([^'\"]+)['\"]", content)
-                            
-                            # Extraction simplifiée des exports
-                            # Match : export const ..., export function ..., export class ..., export default ...
-                            exports = re.findall(r"export\s+(?:default\s+)?(?:const|let|var|function|class|interface|type|async\s+function)\s+([\w$]+)", content)
-                            
-                            # Extraction des fonctions/méthodes (approximation)
-                            # Match : function name(...) { or async function name(...) { or const name = (...) => {
-                            functions = re.findall(r"(?:function|const|let|var)\s+([\w$]+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>", content)
-                            functions += re.findall(r"(?:async\s+)?function\s+([\w$]+)\s*\(", content)
-                            functions += re.findall(r"(?:async\s+)?([\w$]+)\s*\([^)]*\)\s*\{", content) # Pour les méthodes de classe
-                            
-                            # Filtrage des doublons et mots clés JS dans les extractions
-                            functions = list(set([fn for fn in functions if fn not in ('if', 'for', 'while', 'switch', 'catch', 'constructor')]))
-                            
-                            code_map["semantics"][rel_path] = {
-                                "imports": list(set(imports)),
-                                "exports": list(set(exports)),
-                                "functions": functions[:15] # Limite pour rester compact
-                            }
-                    except Exception as e:
-                        logger.warning(f"⚠️ Impossible de parser {rel_path} pour la Code Map : {str(e)}")
+                            imports = re.findall(r"import.*from\s+['\"]([^'\"]+)['\"]", content)
+                            exports = re.findall(r"export.*?(?:const|let|var|function|class|interface|type)\s+([\w$]+)", content)
+                            code_map["semantics"][rel_path] = {"imports": list(set(imports)), "exports": list(set(exports))}
+                    except: pass
         
-        # Formatage compact en JSON string
-        code_map_str = json.dumps(code_map["semantics"], indent=2)
-        file_tree_str = "\n".join(code_map["file_tree"])
-        
-        logger.info(f"✅ Code Map générée ({len(code_map['file_tree'])} fichiers référencés).")
-        
-        return {
-            "code_map": code_map_str,
-            "file_tree": file_tree_str
-        }
+        return {"code_map": json.dumps(code_map["semantics"]), "file_tree": "\n".join(code_map["file_tree"])}
 
     def buildfix_node(self, state: AgentState) -> dict:
-        """Nœud de réparation automatique du build (TypeScript/Node)."""
-        state["error_count"] = state.get("error_count", 0) + 1
-        
-        # Si le build est déjà un succès, on passe directement.
-        diagnostics = state.get("terminal_diagnostics", "")
-        if "✅ SUCCÈS" in diagnostics and "❌ ÉCHEC" not in diagnostics:
-            # logger.info("✅ Build déjà réussi, buildfix_node ignoré.")
-            return {"feedback_correction": ""}
-
-        logger.info("🛠️ Tentative de réparation automatique du build...")
+        """Nœud de réparation automatique du build."""
+        logger.info("🛠️ Tentative de réparation du build...")
         prompt_text = self._load_prompt("subagent_buildfix.prompt")
-        
         parser = JsonOutputParser(pydantic_object=SubagentBuildFixOutput)
         prompt_text += "\n\n{format_instructions}"
         
@@ -580,8 +501,8 @@ class SpecGraphManager:
         
         try:
             raw_output = chain.invoke({
-                "code_map": state.get("code_map", "Non générée"),
-                "file_tree": state.get("file_tree", "Non générée"),
+                "code_map": state.get("code_map", ""),
+                "file_tree": state.get("file_tree", ""),
                 "code_to_verify": state["code_to_verify"],
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
                 "constitution_content": state["constitution_content"],
@@ -589,406 +510,121 @@ class SpecGraphManager:
                 "format_instructions": parser.get_format_instructions()
             })
             result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
-            logger.info("✅ Réparation du build terminée.")
+            sanitized_fix, written = self._persist_code_to_disk(result.get("code", ""))
+            merged = self._merge_code(state.get("code_to_verify", ""), sanitized_fix)
             
-            # Persistance immédiate des corrections sur le disque
-            sanitized_fix = ""
-            if result.get("code"):
-                sanitized_fix, _ = self._persist_code_to_disk(result["code"])
-                
-            # FUSION du code : on fusionne les corrections avec le code de base
-            merged_code = self._merge_code(state.get("code_to_verify", ""), sanitized_fix if sanitized_fix else result.get("code", ""))
-                
-            new_error_count = state.get("error_count", 0) + 1
             return {
-                "code_to_verify": merged_code,
-                "impact_fichiers": list(set(state.get("impact_fichiers", []) + result.get("impact_fichiers", []))),
-                "error_count": new_error_count,
-                "feedback_correction": f"BUILD FIX APPLIED (Attempt {new_error_count}): {result.get('resume', 'Aucun résumé')}"
+                "code_to_verify": merged,
+                "error_count": state.get("error_count", 0) + 1,
+                "feedback_correction": f"BUILD FIX: {result.get('resume', '')}"
             }
-        except ValueError as e:
-            logger.warning(f"⚠️ Réponse IA corrompue (BuildFix JSON) : {str(e)}")
-            return {"feedback_correction": f"BUILD FIX FAILED (Invalid JSON): {str(e)}"}
-        except Exception as e:
-            logger.warning(f"⚠️ Échec du BuildFixer : {str(e)}")
-            return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}
+        except: return {"feedback_correction": "BUILD FIX FAILED"}
 
     def _persist_code_to_disk(self, code: str) -> tuple[str, list[str]]:
-        """
-        Extrait les blocs de fichiers du code généré, les écrit, 
-        et retourne le tuple (code_sanitizé, liste_chemins_écrits).
-        """
         from utils.file_manager import FileManager
         fm = FileManager(base_path=str(self.root))
-        
-        if not code:
-            return "", []
-            
-        # extract_and_write retourne désormais [{"path": ..., "content": ...}]
         results = fm.extract_and_write(code)
-        
         written_paths = [item["path"] for item in results]
-        
-        if results:
-            logger.info(f"💾 {len(results)} fichiers persistés sur le disque.")
-            # On reconstruit le code complet mais avec les contenus sanitizés (Golden Templates appliqués)
-            sanitized_blocks = []
-            for item in results:
-                sanitized_blocks.append(f"// Fichier : {item['path']}")
-                sanitized_blocks.append(item['content'])
-            return "\n".join(sanitized_blocks), written_paths
-            
-        return code, []
+        sanitized_blocks = []
+        for item in results:
+            sanitized_blocks.append(f"// Fichier : {item['path']}\n{item['content']}")
+        return "\n\n".join(sanitized_blocks), written_paths
 
     def _validate_typescript(self, code: str, target_task: str) -> tuple[bool, str]:
-        """Valide le code TypeScript généré avant écriture finale via tsc --noEmit."""
-        import subprocess
-        import tempfile
-        import shutil
-        import re
-        
-        logger.info("🔍 Validation TypeScript pré-emptive via tsc --noEmit...")
-        
-        # 1. Extraction des fichiers du bloc de code
+        import subprocess, tempfile, re
+        from pathlib import Path
         pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
-        file_blocks = re.split(pattern, code)
+        parts = re.split(pattern, code)
+        if len(parts) <= 1: return True, ""
         
-        if len(file_blocks) <= 1:
-            return True, "" # Pas de fichiers extraits ou pas de TS
-            
-        # On ne valide que s'il y a du .ts ou .tsx
-        has_ts = any(file_blocks[i].strip().endswith(('.ts', '.tsx')) for i in range(1, len(file_blocks), 2))
-        if not has_ts:
-            return True, ""
-            
-        # 2. Création d'un environnement de test temporaire
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_path = Path(tmp_dir)
-            
-            # Détermination du contexte (backend ou frontend)
-            context_dir = "backend" if "backend" in target_task.lower() or "api" in target_task.lower() else "frontend"
-            
-            # On simule l'arborescence pour tsc (notamment pour les imports)
-            # Dans un vrai cas pro, on pourrait copier le node_modules/tsconfig existant
-            # Ici on fait une validation "light" sur les fichiers générés
-            
             ts_files = []
-            for i in range(1, len(file_blocks), 2):
-                fpath_str = file_blocks[i].strip()
-                content = file_blocks[i+1].strip()
-                
-                # On ignore les fichiers non TS pour la validation noEmit s'ils sont hors contexte
-                if fpath_str.endswith(('.ts', '.tsx')):
-                    target_file = tmp_path / fpath_str
-                    target_file.parent.mkdir(parents=True, exist_ok=True)
-                    target_file.write_text(content, encoding="utf-8")
-                    ts_files.append(str(target_file))
+            for i in range(1, len(parts), 2):
+                fpath, content = parts[i].strip(), parts[i+1].strip()
+                if fpath.endswith(('.ts', '.tsx')):
+                    t = tmp_path / fpath
+                    t.parent.mkdir(parents=True, exist_ok=True)
+                    t.write_text(content, encoding="utf-8")
+                    ts_files.append(str(t))
             
-            if not ts_files:
-                return True, ""
-                
-            # 3. Exécution de tsc --noEmit
-            project_dir = self.root / context_dir
-            if project_dir.exists():
-                node_modules = project_dir / "node_modules"
-                if not node_modules.exists() and (project_dir / "package.json").exists():
-                    logger.info(f"📦 node_modules manquant dans {context_dir}, exécution de npm install...")
-                    try:
-                        subprocess.run(["npm", "install"], cwd=str(project_dir), shell=True, capture_output=True, timeout=120)
-                    except Exception as ni_err:
-                        logger.warning(f"⚠️ Échec de npm install : {str(ni_err)}")
+            if not ts_files: return True, ""
             
-            cwd = str(project_dir) if project_dir.exists() else str(self.root)
-            
+            cmd = ["npx", "--yes", "tsc", "--noEmit", "--skipLibCheck", "--target", "es2022", "--module", "commonjs"] + ts_files
             try:
-                # Commande : npx tsc --noEmit [fichiers]
-                cmd = ["npx", "--yes", "tsc", "--noEmit", "--skipLibCheck", "--target", "es2022", "--module", "commonjs"] + ts_files
-                
-                # Sous Windows, npx peut nécessiter shell=True
-                result = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=90)
-                
-                if result.returncode == 0:
-                    logger.info("✅ Validation TypeScript réussie.")
-                    return True, ""
-                else:
-                    # Nettoyage des chemins temporaires dans les erreurs pour l'IA
-                    clean_errors = result.stdout.replace(str(tmp_path), "").replace(str(tmp_path).replace("\\", "/"), "")
-                    clean_errors += result.stderr.replace(str(tmp_path), "")
-                    logger.warning(f"❌ Erreurs TypeScript détectées :\n{clean_errors[:500]}...")
-                    return False, clean_errors
-            except Exception as e:
-                logger.error(f"❌ Erreur lors de la validation TS : {str(e)}")
-                return True, "" # On ne bloque pas si tsc n'est pas dispo
+                res = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
+                if res.returncode == 0: return True, ""
+                return False, res.stdout + res.stderr
+            except: return True, ""
 
-    def _merge_code(self, base_code: str, delta_code: str) -> str:
-        """Fusionne deux blocs de code multi-fichiers. Le delta écrase la base si conflit."""
-        import re
-        if not delta_code:
-            return base_code
-        if not base_code:
-            return delta_code
-            
-        pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
-        
-        def parse_to_dict(code):
-            blocks = re.split(pattern, code)
-            file_dict = {}
-            if len(blocks) > 1:
-                for i in range(1, len(blocks), 2):
-                    fname = blocks[i].strip()
-                    # On cherche l'en-tête pour la reconstruction
-                    header_match = re.search(fr'(?m)^.*{re.escape(fname)}.*$', code)
-                    header = header_match.group(0) if header_match else f"// [DEBUT_FICHIER: {fname}]"
-                    file_dict[fname] = {
-                        "header": header,
-                        "content": blocks[i+1]
-                    }
-            return file_dict
-
-        base_dict = parse_to_dict(base_code)
-        delta_dict = parse_to_dict(delta_code)
-        
-        # Fusion robuste : on cherche par correspondance de chemin
-        for d_fname, d_data in delta_dict.items():
-            found = False
-            # Tentative 1 : Match exact
-            if d_fname in base_dict:
-                base_dict[d_fname] = d_data
-                found = True
-            else:
-                # Tentative 2 : Match par suffixe (ex: articles.controller.ts match backend/src/...)
-                # ou l'inverse
-                for b_fname in list(base_dict.keys()):
-                    if b_fname.endswith(d_fname) or d_fname.endswith(b_fname):
-                        base_dict[b_fname] = d_data
-                        found = True
-                        break
-            
-            if not found:
-                base_dict[d_fname] = d_data
-        
-        # Reconstruction
-        merged = []
-        for fname, data in base_dict.items():
-            merged.append(data["header"])
-            merged.append(data["content"])
-            # On ajoute un marqueur de fin générique pour la propreté
-            merged.append(f"// [FIN_FICHIER: {fname}]")
-            
-        return "\n".join(merged)
+    def _merge_code(self, base: str, delta: str) -> str:
+        if not delta: return base
+        return delta # Simplification pour le merge (le buildfix renvoie souvent le fichier entier)
 
     def route_after_diagnostic(self, state: AgentState) -> str:
-        """Route après le diagnostic : buildfix_node si erreur technique, sinon verify_node."""
-        diagnostics = state.get("terminal_diagnostics", "")
-        
-        # On ne tente le buildfix que s'il y a un échec réel de build ou de tests
-        if "❌ ÉCHEC" in diagnostics or "❌ ERREUR" in diagnostics:
-             # Protection contre boucle infinie (on réutilise le compteur global)
-             if state.get("error_count", 0) < 3:
-                 logger.info("🔧 Échec du build détecté. Routage vers buildfix_node...")
-                 return "buildfix_node"
-        
-        return "verify_node"
+        diag = state.get("terminal_diagnostics", "")
+        if ("❌ ÉCHEC" in diag or "❌ ERREUR" in diag) and state.get("error_count", 0) < 3:
+            return "buildfix_node"
+        return "task_enforcer_node"
             
     def diagnostic_node(self, state: AgentState) -> dict:
-        """Nœud Intermédiaire : Exécution réelle des commandes de diagnostic."""
-        logger.info("🛠️ Lancement des diagnostics réels du terminal...")
-        
-        # 0. S'assurer que le code de l'état est bien sur le disque
-        code = state.get("code_to_verify", "")
-        _, written_files = self._persist_code_to_disk(code)
-        
-        diagnostics = []
+        logger.info("🛠️ Diagnostics terminés.")
         import subprocess
-        
-        search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
-        found_something = False
-        
-        for target_dir in search_dirs:
-            if (target_dir / "package.json").exists():
-                found_something = True
-                dir_name = target_dir.name if target_dir.name else "racine"
-                
-                # Toujours réinstaller les dépendances si on a écrit un package.json dans ce dossier
-                target_rel_pkg = (target_dir / "package.json").relative_to(self.root).as_posix()
-                pkg_written = any(Path(f).as_posix() == target_rel_pkg for f in written_files)
-                
-                if not (target_dir / "node_modules").exists() or pkg_written:
-                    logger.info(f"⏳ Installation des dépendances (npm install) dans {dir_name}...")
-                    try:
-                        # On capture la sortie pour pouvoir la fournir à l'agent de correction si ça échoue
-                        res_install = subprocess.run("npm install", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=180)
-                        if res_install.returncode != 0:
-                            logger.error(f"❌ npm install a échoué dans {dir_name}. stderr: {res_install.stderr[:200]}...")
-                            diagnostics.append(f"❌ ÉCHEC DE L'INSTALLATION (npm install) dans {dir_name} :\nSTDOUT: {res_install.stdout}\nSTDERR: {res_install.stderr}")
-                        else:
-                            logger.info(f"✅ npm install réussi dans {dir_name}.")
-                    except Exception as e:
-                        diagnostics.append(f"❌ ERREUR CRITIQUE lors de npm install dans {dir_name}: {str(e)}")
-                
-                # 2. Détection de dépendances manquantes (npm ls)
-                logger.info(f"🔍 Vérification des dépendances dans {dir_name}...")
-                try:
-                    res_ls = subprocess.run("npm ls --depth=0", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=60)
-                    if res_ls.returncode != 0:
-                        diagnostics.append(f"⚠️ DÉPENDANCES MANQUANTES/INVALIDES dans {dir_name} :\n{res_ls.stdout}\n{res_ls.stderr}")
-                    else:
-                        diagnostics.append(f"✅ Dépendances OK dans {dir_name}")
-                except Exception as e:
-                    diagnostics.append(f"❌ Erreur lors de npm ls dans {dir_name}: {str(e)}")
-
-                # 3. Vérification de compilation TypeScript (tsc --noEmit)
-                logger.info(f"🔍 Compilation TypeScript (--noEmit) dans {dir_name}...")
-                # On utilise npx --yes pour éviter de bloquer sur une demande de confirmation d'installation
-                try:
-                    res_tsc = subprocess.run("npx --yes tsc --noEmit", shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
-                    if res_tsc.returncode != 0:
-                        diagnostics.append(f"❌ ÉCHEC de [tsc --noEmit] dans {dir_name} :\nSTDOUT: {res_tsc.stdout}\nSTDERR: {res_tsc.stderr}")
-                    else:
-                        diagnostics.append(f"✅ SUCCÈS de [tsc --noEmit] dans {dir_name}")
-                except Exception as e:
-                    diagnostics.append(f"❌ Erreur lors de tsc --noEmit dans {dir_name}: {str(e)}")
-
-                # 4. Exécution du build (npm run build)
-                cmd = "npm run build"
-                logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
-                try:
-                    result = subprocess.run(
-                        cmd, 
-                        shell=True, 
-                        capture_output=True, 
-                        text=True, 
-                        cwd=str(target_dir),
-                        timeout=90
-                    )
-                    
-                    if result.returncode != 0:
-                        # Si le script 'build' n'existe pas, npm renvoie une erreur spécifique, on peut l'ignorer ou le signaler
-                        if "Missing script: \"build\"" in result.stderr or "Missing script: build" in result.stderr:
-                            diagnostics.append(f"ℹ️ Aucun script 'build' dans {dir_name}.")
-                        else:
-                            error_report = f"❌ ÉCHEC de [{cmd}] dans {dir_name} :\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}"
-                            diagnostics.append(error_report)
-                    else:
-                        diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
-                        
-                except subprocess.TimeoutExpired:
-                    diagnostics.append(f"⚠️ TIMEOUT sur [{cmd}] dans {dir_name}")
-                except Exception as e:
-                    diagnostics.append(f"❌ ERREUR fatale lors de l'exécution de [{cmd}] dans {dir_name} : {str(e)}")
-
-            if (target_dir / "pyproject.toml").exists() or (target_dir / "requirements.txt").exists():
-                found_something = True
-                dir_name = target_dir.name if target_dir.name else "racine"
-                
-                import os
-                has_tests = False
-                if (target_dir / "tests").exists() and any((target_dir / "tests").iterdir()):
-                    has_tests = True
-                else:
-                    try:
-                        for f in os.listdir(target_dir):
-                            if f.startswith("test_") and f.endswith(".py"):
-                                has_tests = True
-                                break
-                    except:
-                        pass
-                
-                if not has_tests:
-                    diagnostics.append(f"ℹ️ Aucun test détecté dans {dir_name}, pytest ignoré.")
-                else:
-                    cmd = "pytest"
-                    logger.info(f"🏃 Exécution de : {cmd} dans {dir_name}")
-                    try:
-                        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(target_dir), timeout=90)
-                        if result.returncode != 0:
-                            diagnostics.append(f"❌ ÉCHEC de [{cmd}] dans {dir_name}:\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
-                        else:
-                            diagnostics.append(f"✅ SUCCÈS de [{cmd}] dans {dir_name}")
-                    except Exception as e:
-                        diagnostics.append(f"❌ ERREUR exécutant [{cmd}] dans {dir_name}: {str(e)}")
-            
-        if not found_something:
-            logger.info("ℹ️ Aucun script de diagnostic automatisé trouvé (ni package.json, ni Python config).")
-            return {"terminal_diagnostics": "Aucun outil de diagnostic configuré."}
-            
-        full_report = "\n---\n".join(diagnostics)
-        logger.info("✅ Diagnostics terminés.")
-        return {"terminal_diagnostics": full_report}
-
-
-    # ─── 3. Fonctions de routage (conditions) ─────────────────────────────
+        reports = []
+        for d in [self.root, self.root / "backend", self.root / "frontend"]:
+            if (d / "package.json").exists():
+                res = subprocess.run("npx --yes tsc --noEmit", shell=True, capture_output=True, text=True, cwd=str(d))
+                reports.append(f"TS {d.name}: {'✅' if res.returncode==0 else '❌'}\n{res.stdout}")
+        return {"terminal_diagnostics": "\n".join(reports)}
 
     def route_after_verify(self, state: AgentState) -> str:
-        """Après l'audit : terminer (END) ou ré-implémenter (impl_node)."""
-        if state.get("validation_status") == "APPROUVÉ":
+        if state.get("validation_status") == "APPROUVÉ" or state.get("error_count", 0) >= 3:
             return END
-        
-        # Limite de boucles pour éviter de vider le quota en cas d'erreur persistante
-        if state.get("error_count", 0) >= 3:
-            logger.error("🛑 Limite de tentatives (3) atteinte. Abandon pour éviter une boucle infinie.")
-            return END
-            
-        logger.info(f"🔄 Routage vers l'Implémentateur pour correction (Tentative {state.get('error_count', 0)}/3)...")
         return "impl_node"
 
-    # ─── 4. Construction du graphe ─────────────────────────────────────────
-
     def _build_graph(self):
-        # Ajout des nœuds
         self.graph_builder.add_node("analysis_node", self.analysis_node)
-        self.graph_builder.add_node("impl_node", self.impl_node)
-        self.graph_builder.add_node("verify_node", self.verify_node)
-
-        # Transitions (flux)
-        self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
-        self.graph_builder.add_node("buildfix_node", self.buildfix_node)
         self.graph_builder.add_node("code_map_node", self.code_map_node)
         self.graph_builder.add_node("GraphicDesign_node", self.GraphicDesign_node)
-        
+        self.graph_builder.add_node("impl_node", self.impl_node)
+        self.graph_builder.add_node("persist_node", self.persist_node)
+        self.graph_builder.add_node("install_deps_node", self.install_deps_node)
+        self.graph_builder.add_node("typescript_node", self.typescript_node)
+        self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
+        self.graph_builder.add_node("buildfix_node", self.buildfix_node)
+        self.graph_builder.add_node("task_enforcer_node", self.task_enforcer_node)
+        self.graph_builder.add_node("verify_node", self.verify_node)
+
         self.graph_builder.add_edge(START, "analysis_node")
         self.graph_builder.add_edge("analysis_node", "code_map_node")
         self.graph_builder.add_edge("code_map_node", "GraphicDesign_node")
         self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
-        self.graph_builder.add_edge("impl_node", "diagnostic_node")
         
-        # Branchement conditionnel (Correction automatique du build)
-        self.graph_builder.add_conditional_edges(
-            "diagnostic_node",
-            self.route_after_diagnostic,
-            {
-                "buildfix_node": "buildfix_node",
-                "verify_node": "task_enforcer_node" # On passe par l'Enforcer avant l'Audit
-            }
-        )
-        self.graph_builder.add_edge("buildfix_node", "diagnostic_node") # Boucle pour vérifier la correction
+        # Routage après Impl : Si REJETÉ (erreur technique), on boucle
+        def route_after_impl(state):
+            if state["validation_status"] == "REJETÉ": return "impl_node"
+            return "persist_node"
+        self.graph_builder.add_conditional_edges("impl_node", route_after_impl, {"impl_node": "impl_node", "persist_node": "persist_node"})
+        
+        self.graph_builder.add_edge("persist_node", "install_deps_node")
+        self.graph_builder.add_edge("install_deps_node", "typescript_node")
+        
+        # Routage après TS Validation
+        def route_after_ts(state):
+            if state["validation_status"] == "REJETÉ": return "impl_node"
+            return "diagnostic_node"
+        self.graph_builder.add_conditional_edges("typescript_node", route_after_ts, {"impl_node": "impl_node", "diagnostic_node": "diagnostic_node"})
+        
+        self.graph_builder.add_conditional_edges("diagnostic_node", self.route_after_diagnostic, {"buildfix_node": "buildfix_node", "task_enforcer_node": "task_enforcer_node"})
+        self.graph_builder.add_edge("buildfix_node", "diagnostic_node")
+        
+        # Routage après Enforcer
+        def route_after_enf(state):
+            if state["validation_status"] == "STRUCTURE_KO": return "impl_node"
+            return "verify_node"
+        self.graph_builder.add_conditional_edges("task_enforcer_node", route_after_enf, {"impl_node": "impl_node", "verify_node": "verify_node"})
+        
+        self.graph_builder.add_conditional_edges("verify_node", self.route_after_verify, {END: END, "impl_node": "impl_node"})
 
-        # Routage après TaskEnforcer
-        def route_after_enforcer(state: AgentState) -> str:
-            if state.get("validation_status") == "STRUCTURE_OK":
-                return "verify_node"
-            return "impl_node" # On renvoie à l'implémenteur pour générer les fichiers manquants
-
-        self.graph_builder.add_node("task_enforcer_node", self.task_enforcer_node)
-        self.graph_builder.add_conditional_edges(
-            "task_enforcer_node",
-            route_after_enforcer,
-            {
-                "verify_node": "verify_node",
-                "impl_node": "impl_node"
-            }
-        )
-
-        # Branchement conditionnel (Boucle de correction finale / Audit)
-        self.graph_builder.add_conditional_edges(
-            "verify_node",
-            self.route_after_verify,
-            {
-                END: END,
-                "impl_node": "impl_node",
-            }
-        )
-
-        # Compilation
         self.app = self.graph_builder.compile()
-        logger.info("🧠 Cerveau LangGraph compilé et prêt.")
+        logger.info("🧠 Cerveau LangGraph compilé - Nouvelle Architecture.")

@@ -147,6 +147,13 @@ class FileManager:
             logger.warning(f"⚠️ Échec de la normalisation de package.json : {e}")
             return content
 
+    def extract_and_write(self, code: str) -> list:
+        """Extrait les fichiers du code (format Spec-Kit) et les écrit sur le disque avec filtre Golden Template."""
+        import re
+        written_files = []
+        if not code:
+            return written_files
+
         # Regex robuste pour détecter les en-têtes de fichiers
         pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
         file_blocks = re.split(pattern, code)
@@ -186,9 +193,9 @@ class FileManager:
                     else:
                         logger.warning(f"⚠️ Aucun Golden Template trouvé pour {file_path_str}, utilisation du contenu IA.")
 
-                    # --- NORMALISATION DES DÉPENDANCES ---
-                    if not is_golden:
-                        final_content = self._normalize_package_json(final_content)
+                # --- NORMALISATION DES DÉPENDANCES ---
+                if not is_golden and "package.json" in file_path_str.lower():
+                    final_content = self._normalize_package_json(final_content)
 
                 # Nettoyage profond (marqueurs FIN, backticks markdown)
                 final_content = re.sub(r'(?m)^(?://|#)\s*\[FIN_FICHIER:.*?\].*$', '', final_content)
