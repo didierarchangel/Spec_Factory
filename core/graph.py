@@ -291,11 +291,16 @@ class SpecGraphManager:
             })
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
-            logger.info("✅ Implémentation terminée. Lancement de la validation pré-emptive...")
+            logger.info("✅ Implémentation terminée. Persistance des fichiers...")
             
-            # --- VALIDATION TYPESCRIPT PRÉ-EMPTIVE ---
+            # 1. Persistance immédiate sur le disque
+            written_code = ""
             if result.get("code"):
-                is_valid, errors = self._validate_typescript(result["code"], state["target_task"])
+                written_code, _ = self._persist_code_to_disk(result["code"])
+            
+            # 2. Validation TypeScript (après persistance pour garantir le contexte projet)
+            if written_code:
+                is_valid, errors = self._validate_typescript(written_code, state["target_task"])
                 if not is_valid:
                     new_error_count = state.get("error_count", 0) + 1
                     logger.warning(f"⚠️ Validation TypeScript échouée ({new_error_count}/3).")
@@ -303,23 +308,18 @@ class SpecGraphManager:
                     if new_error_count < 3:
                         return {
                             "validation_status": "REJETÉ",
-                            "feedback_correction": f"The following TypeScript errors occurred during pre-emptive validation:\n\n{errors}\n\nRegenerate the code with corrected types and strict adherence to TypeScript rules.",
+                            "feedback_correction": f"The following TypeScript errors occurred during validation:\n\n{errors}\n\nRegenerate the code with corrected types.",
                             "error_count": new_error_count
                         }
                     else:
-                        logger.error("🛑 Limite de tentatives atteinte lors de la validation pré-emptive. Persistence forcée.")
+                        logger.error("🛑 Limite de tentatives atteinte. On laisse le code tel quel pour audit final.")
             
-            # Persistance immédiate des fichiers sur le disque (on récupère le code sanitizé/golden)
-            sanitized_code = ""
-            if result.get("code"):
-                sanitized_code, _ = self._persist_code_to_disk(result["code"])
-                
             return {
-                "code_to_verify": sanitized_code if sanitized_code else result["code"],
+                "code_to_verify": written_code if written_code else result.get("code", ""),
                 "impact_fichiers": result.get("impact_fichiers", []),
                 "last_error": "",
-                "validation_status": "APPROUVÉ", # Status interne pour passer à la suite
-                "error_count": 0 # Reset si succès
+                "validation_status": "APPROUVÉ",
+                "error_count": 0 
             }
         except ValueError as e:
             error_msg = f"Réponse IA corrompue (JSON invalide) : {str(e)}"
@@ -387,19 +387,25 @@ class SpecGraphManager:
                 result['alertes'] = f"Le code n'a pas pu être généré : {state['code_to_verify']}"
                 result['action_corrective'] = "Réessaye de générer le code en respectant strictement le format JSON."
 
-            # Intégration du score de complétion des tâches
-            audit_score = result.get("score_conformite", 0)
+            # --- GROUND TRUTH : Vérification réelle sur DISQUE (Execution Contract Engine) ---
+            from core.etapes import EtapeManager
+            etape_manager = EtapeManager(self.model, project_root=str(self.root))
             
-            # Calcul du score basé sur les tâches réelles (TaskEnforcer)
-            total = state.get("total_subtasks", 0)
-            missing = state.get("missing_subtasks", 0)
+            # On force la mise à jour disk-based des sous-tâches
+            _, checked_count, total_count = etape_manager.mark_step_as_completed(
+                state["current_step"], 
+                synthesis=result.get("resume", ""),
+                project_root=str(self.root)
+            )
             
-            if total > 0:
-                task_score = int(((total - missing) / total) * 100)
-                final_score = min(audit_score, task_score)
-                logger.info(f"📊 Score final calculé : min(Audit:{audit_score}, Tâches:{task_score}%) = {final_score}")
-            else:
-                final_score = audit_score
+            # Calcul du score basé sur le RÉEL (Disque)
+            task_score = int((checked_count / total_count * 100)) if total_count > 0 else 100
+            audit_score = int(result.get("score_conformite", 0))
+            
+            # Le score final est le minimum du ressenti IA et de la réalité DISQUE
+            final_score = min(audit_score, task_score)
+            
+            logger.info(f"📊 Score Audit: {audit_score} | Score Tâches (Disque): {task_score}% | Final: {final_score}")
 
             if status == "APPROUVÉ":
                 logger.info(f"✅ Code APPROUVÉ par l'Auditeur. Score final: {final_score}")
@@ -682,18 +688,24 @@ class SpecGraphManager:
                 return True, ""
                 
             # 3. Exécution de tsc --noEmit
-            # On essaie d'utiliser le tsc du projet s'il existe
             project_dir = self.root / context_dir
+            if project_dir.exists():
+                node_modules = project_dir / "node_modules"
+                if not node_modules.exists() and (project_dir / "package.json").exists():
+                    logger.info(f"📦 node_modules manquant dans {context_dir}, exécution de npm install...")
+                    try:
+                        subprocess.run(["npm", "install"], cwd=str(project_dir), shell=True, capture_output=True, timeout=120)
+                    except Exception as ni_err:
+                        logger.warning(f"⚠️ Échec de npm install : {str(ni_err)}")
+            
             cwd = str(project_dir) if project_dir.exists() else str(self.root)
             
             try:
                 # Commande : npx tsc --noEmit [fichiers]
-                # Note: On valide fichier par fichier ou globalement. 
-                # --skipLibCheck pour éviter les erreurs de node_modules tiers
                 cmd = ["npx", "--yes", "tsc", "--noEmit", "--skipLibCheck", "--target", "es2022", "--module", "commonjs"] + ts_files
                 
                 # Sous Windows, npx peut nécessiter shell=True
-                result = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=60)
+                result = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=90)
                 
                 if result.returncode == 0:
                     logger.info("✅ Validation TypeScript réussie.")

@@ -184,8 +184,11 @@ class EtapeManager:
         subtasks = []
         inside_target = False
         
+        # Regex plus stricte pour éviter les correspondances partielles
+        step_header_pattern = rf"^## \[.\] {re.escape(step_id)}(?:\s*:|$)"
+        
         for line in lines:
-            if f"## [ ] {step_id}" in line or f"## [x] {step_id}" in line:
+            if re.match(step_header_pattern, line):
                 inside_target = True
                 continue
             if line.startswith("## ") and inside_target:
@@ -193,31 +196,48 @@ class EtapeManager:
             if inside_target and line.strip().startswith("- ["):
                 # Extraire le texte de la sous-tâche (sans le checkbox)
                 text = re.sub(r'^-\s*\[.\]\s*', '', line.strip())
-                subtasks.append(text)
+                if text and text not in subtasks: # Éviter les doublons de lecture
+                    subtasks.append(text)
         
         return subtasks
 
-    def _file_exists(self, check_root: Path, file_path_str: str) -> bool:
-        """Vérifie l'existence d'un fichier en testant plusieurs préfixes de dossiers courants."""
+    def _file_exists(self, check_root: Path, path_str: str) -> bool:
+        """Vérifie l'existence d'un fichier ou d'un dossier sur le disque."""
         # 1. Chemin direct
-        if (check_root / file_path_str).exists():
+        if (check_root / path_str).exists():
             return True
             
-        # 2. Normalisation (retrait des préfixes si déjà présents pour éviter les doublons)
-        clean_path = file_path_str.lstrip('/').lstrip('\\').replace('\\', '/')
+        # 2. Normalisation
+        clean_path = path_str.lstrip('/').lstrip('\\').replace('\\', '/')
         
-        # 3. Liste des préfixes probables
+        # 3. Test des préfixes standards
         prefixes = ["backend", "backend/src", "frontend", "frontend/src"]
-        
         for prefix in prefixes:
-            # Si le chemin commence déjà par le préfixe, on ne le rajoute pas
             if clean_path.startswith(prefix + "/"):
                 if (check_root / clean_path).exists(): return True
-                continue
-                
-            if (check_root / prefix / clean_path).exists():
+            elif (check_root / prefix / clean_path).exists():
                 return True
         
+        return False
+
+    def _dependency_installed(self, check_root: Path, dep_name: str) -> bool:
+        """Vérifie si une dépendance NPM est installée (via package.json)."""
+        import json
+        pkg_paths = [
+            check_root / "package.json",
+            check_root / "backend" / "package.json",
+            check_root / "frontend" / "package.json"
+        ]
+        
+        for pkg_path in pkg_paths:
+            if pkg_path.exists():
+                try:
+                    data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                    dependencies = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+                    if dep_name in dependencies:
+                        return True
+                except Exception:
+                    continue
         return False
 
     def mark_step_as_completed(self, step_id: str, synthesis: str = None, project_root: str = None) -> bool:
@@ -236,10 +256,13 @@ class EtapeManager:
         checked_count = 0
         total_subtasks = 0
 
+        # Regex pour matcher l'étape cible
+        step_pattern = rf"^## \[ \] {re.escape(step_id)}(?:\s*:|$)"
+
         for line in lines:
             # Si on trouve le header de l'étape cible
-            if f"## [ ] {step_id}" in line:
-                updated_lines.append(line.replace(f"## [ ] {step_id}", f"## [x] {step_id}"))
+            if re.match(step_pattern, line):
+                updated_lines.append(line.replace("[ ]", "[x]"))
                 inside_target_step = True
                 found = True
                 continue
@@ -248,35 +271,37 @@ class EtapeManager:
             if line.startswith("## ") and inside_target_step:
                 inside_target_step = False
             
-            # Pour les sous-tâches : vérification intelligente
+            # Pour les sous-tâches : vérification intelligente sur DISQUE
             if inside_target_step and line.strip().startswith("- [ ]"):
                 total_subtasks += 1
                 subtask_text = line.strip()
                 
-                # Extraire les chemins de fichiers/dossiers mentionnés dans la sous-tâche
-                # Patterns : `backend/tsconfig.json`, `backend/src`, `backend/.env`, etc.
-                file_patterns = re.findall(r'`([a-zA-Z0-9._\-/\\]+(?:\.[a-zA-Z0-9]+)?)`', subtask_text)
+                # Patterns : `backend/tsconfig.json` ou `express`
+                items_to_check = re.findall(r'`([^`]+)`', subtask_text)
                 
-                if file_patterns:
-                    # Il y a des fichiers/dossiers mentionnés : vérifier leur existence
-                    all_exist = True
-                    for fp in file_patterns:
-                        if not self._file_exists(check_root, fp):
-                            all_exist = False
-                            break
+                if items_to_check:
+                    all_ok = True
+                    missing_items = []
                     
-                    if all_exist:
-                        updated_lines.append(line.replace("- [ ]", "- [x]"))
+                    for item in items_to_check:
+                        # On vérifie si c'est un fichier OU une dépendance
+                        exists_as_file = self._file_exists(check_root, item)
+                        exists_as_dep = self._dependency_installed(check_root, item)
+                        
+                        if not (exists_as_file or exists_as_dep):
+                            all_ok = False
+                            missing_items.append(item)
+                    
+                    if all_ok:
+                        updated_lines.append(line.replace("[ ]", "[x]"))
                         checked_count += 1
-                        logger.info(f"  ✅ Sous-tâche vérifiée : {subtask_text[:60]}")
+                        logger.info(f"  ✅ Sous-tâche validée (Disque/Deps) : {subtask_text[:60]}")
                     else:
-                        missing = [fp for fp in file_patterns if not self._file_exists(check_root, fp)]
-                        updated_lines.append(line)  # On ne coche PAS
-                        logger.warning(f"  ❌ Sous-tâche NON vérifiée (fichiers manquants: {missing}): {subtask_text[:60]}")
+                        updated_lines.append(line)
+                        logger.warning(f"  ❌ Sous-tâche NON validée (Manquant: {missing_items}) : {subtask_text[:60]}")
                 else:
-                    # Pas de fichier mentionné (ex: "Installer les dépendances") 
-                    # → On coche si l'étape parente est approuvée (comportement legacy)
-                    updated_lines.append(line.replace("- [ ]", "- [x]"))
+                    # Pas d'item spécifique -> Auto-validation par propagation
+                    updated_lines.append(line.replace("[ ]", "[x]"))
                     checked_count += 1
             else:
                 updated_lines.append(line)
@@ -296,7 +321,7 @@ class EtapeManager:
         if synthesis:
             self.add_step_to_history(step_id, synthesis)
 
-        return True
+        return True, checked_count, total_subtasks
 
 
     def add_step_to_history(self, step_id: str, synthesis: str):
