@@ -1214,11 +1214,12 @@ class SpecGraphManager:
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            raw_output = chain.invoke({
+            invoke_dict = {
                 "subtask_checklist": state.get("subtask_checklist", ""),
                 "file_tree": state.get("file_tree", ""),
                 "format_instructions": parser.get_format_instructions()
-            })
+            }
+            raw_output = self._invoke_with_retry(chain, invoke_dict, max_attempts=3)
             result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
             
             # ──────── POST-PROCESSING: Vérifier les fichiers manquants en Python ────────
@@ -1284,13 +1285,9 @@ class SpecGraphManager:
         
         try:
             prompt_text = self._load_prompt("subagent_buildfix.prompt")
-            
             from langchain_core.prompts import ChatPromptTemplate, PromptTemplate, HumanMessagePromptTemplate
-            
             parser = JsonOutputParser(pydantic_object=SubagentBuildFixOutput)
             format_instructions = parser.get_format_instructions()
-            
-            # 🛡️ SAFE: Build inject dict with all required values
             inject_dict = {
                 "code_to_verify": state.get("code_to_verify", ""),
                 "terminal_diagnostics": state.get("terminal_diagnostics", ""),
@@ -1299,37 +1296,23 @@ class SpecGraphManager:
                 "feedback_correction": state.get("feedback_correction", ""),
                 "format_instructions": format_instructions
             }
-            
-            # 🛡️ SAFE: Use str.format() instead of PromptTemplate to avoid parsing curly braces
-            try:
-                # Replace placeholders safely without template parsing
-                for key, value in inject_dict.items():
-                    placeholder = "{" + key + "}"
-                    prompt_text = prompt_text.replace(placeholder, str(value))
-                
-                # Now create the prompt template (no more template variables to parse)
-                prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
-                chain = prompt | self.model | StrOutputParser()
-                
-                raw_output = chain.invoke({})
-            except Exception as template_err:
-                logger.warning(f"⚠️ Template injection failed: {template_err}. Using direct invocation...")
-                # Fallback: send raw prompt directly
-                raw_output = self.model.invoke(prompt_text)
-                if hasattr(raw_output, 'content'):
-                    raw_output = raw_output.content
-            
+            # Replace placeholders safely without template parsing
+            for key, value in inject_dict.items():
+                placeholder = "{" + key + "}"
+                prompt_text = prompt_text.replace(placeholder, str(value))
+            prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
+            chain = prompt | self.model | StrOutputParser()
+            # 🛡️ RETRY with backoff
+            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
             result = self._safe_parse_json(raw_output, SubagentBuildFixOutput)
             sanitized_fix, written = self._persist_code_to_disk(result.get("code", ""))
             merged = self._merge_code(state.get("code_to_verify", ""), sanitized_fix)
-            
             return {
                 "code_to_verify": merged,
                 "error_count": state.get("error_count", 0) + 1,
                 "impact_fichiers": list(set(state.get("impact_fichiers", []) + written)),
                 "feedback_correction": f"BUILD FIX: {result.get('resume', '')}"
             }
-        
         except Exception as e:
             logger.error(f"🛑 buildfix_node error: {e}")
             return {"feedback_correction": f"BUILD FIX FAILED: {str(e)}"}
