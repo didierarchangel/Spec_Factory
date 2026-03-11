@@ -113,13 +113,13 @@ Si le project est React (dossier `frontend/`) :
 ## 9. Event Handler Type Errors
 **Problème**: `TS2769: No overload matches this call` pour onClick, onChange, etc.
 - Typer correctement les handlers :
-  - ✅ Correct: `onClick={(e: React.MouseEvent) => handleClick(e)}`
-  - ✅ Correct: `onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleChange(e.target.value)}`
-  - ❌ Incorrect: `onClick={handleClick()}` (appel au lieu de référence)
+  - ✅ Correct: `onClick={{ (e: React.MouseEvent) => handleClick(e) }}`
+  - ✅ Correct: `onChange={{ (e: React.ChangeEvent<HTMLInputElement>) => handleChange(e.target.value) }}`
+  - ❌ Incorrect: `onClick={{ handleClick() }}` (appel au lieu de référence)
 
 ## 10. Component Memoization Issues
 **Problème**: React.memo ou useMemo causing type errors
-- Typer correctement : `const Component = React.memo((props: Props) => { ... })`
+- Typer correctement : `const Component = React.memo((props: Props) => {{ ... }})`
 - useMemo dependencies : Dépendances EXACTES du calcul, pas vides `[]`
 
 ## vite.config & tsconfig Setup
@@ -142,9 +142,9 @@ Si l'erreur est : `TS2559: Type '{ children: Element; }' has no properties in co
 
 ```typescript
 // ❌ INCORRECT
-const Layout = ({{ children }}) => {
+const Layout = ({{ children }}) => {{
   return <div>{{children}}</div>
-}
+}}
 
 // ✅ CORRECT
 import React, {{ ReactNode }} from 'react'
