@@ -1015,19 +1015,44 @@ class SpecGraphManager:
         """Extrait les chemins de fichiers obligatoires mentionnés dans la checklist.
         
         Cherche les chemins entre backticks: `backend/src/middlewares/auth.ts`
+        Cas spécial: Si un ligne a `fileName` ET `folder/`, les combine en `folder/fileName`
         Returns: Liste des chemins de fichiers trouvés
         """
         import re
         if not checklist_text:
             return []
         
-        # Chercher tous les chemins entre backticks
-        # Pattern: `path/to/file.ext` (avec extensions communes)
-        pattern = r'`([^`]+\.(?:ts|tsx|js|jsx|json|md|yaml|yml|css|html))`'
-        matches = re.findall(pattern, checklist_text)
+        required_files = []
         
-        logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {matches}")
-        return matches
+        # Traiter chaque ligne de la checklist
+        for line in checklist_text.split('\n'):
+            if not line.strip():
+                continue
+            
+            # Pattern 1: Chemins complets avec dossier inclus: `folder/path/fileName.ext`
+            full_paths = re.findall(r'`([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)`', line)
+            for path in full_paths:
+                if path not in required_files:
+                    required_files.append(path)
+            
+            # Pattern 2: Cas particulier - fileName et répertoire séparés sur la même ligne
+            # Ex: "Créer une page (`HomePage.tsx`) dans `frontend/src/pages/`"
+            file_names = re.findall(r'`([a-zA-Z0-9_\-]+\.[a-zA-Z0-9]+)`', line)
+            directories = re.findall(r'`([a-zA-Z0-9_\-./]+/)`', line)
+            
+            # Si on a exactement 1 fichier et 1+ répertoires, combiner
+            if len(file_names) == 1 and len(directories) >= 1:
+                filename = file_names[0]
+                # Utiliser le répertoire le plus spécifique (le dernier trouvé)
+                directory = directories[-1] if directories else ""
+                combined_path = f"{directory}{filename}".replace('//', '/')
+                
+                # Vérifier que ce chemin n'a pas déjà été extrait en pattern 1
+                if combined_path not in required_files:
+                    required_files.append(combined_path)
+        
+        logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {required_files}")
+        return required_files
 
     def _ensure_required_artifacts(self, required_files: List[str], written_paths: List[str]) -> List[str]:
         """Crée les fichiers obligatoires manquants en tant que stubs minimalistes.
