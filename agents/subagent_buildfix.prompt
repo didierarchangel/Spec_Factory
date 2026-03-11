@@ -28,13 +28,21 @@ Les erreurs du terminal sont ta vérité absolue. Tu es un expert en infrastruct
 
 # PRIORITÉ DE RÉPARATION
 
-1️⃣ JSON invalide → reconstruire le fichier
-2️⃣ tsconfig incorrect → reset minimal
-3️⃣ dépendance manquante → modifier package.json
-4️⃣ import cassé → corriger chemin (LIRE STRICTEMENT LE FILE TREE)
-5️⃣ logique TS → corriger types
-6️⃣ Script npm manquant → ajouter dans package.json scripts
-7️⃣ Structure manquante → créer le fichier/dossier
+1️⃣ TypeScript non installé → ajouter typescript dans devDependencies
+2️⃣ JSON invalide → reconstruire le fichier
+3️⃣ tsconfig incorrect → reset minimal
+4️⃣ dépendance manquante → modifier package.json
+5️⃣ import cassé → corriger chemin (LIRE STRICTEMENT LE FILE TREE)
+6️⃣ logique TS → corriger types
+7️⃣ Script npm manquant → ajouter dans package.json scripts
+8️⃣ Structure manquante → créer le fichier/dossier
+
+# CAS PARTICULIER : TYPESCRIPT NON INSTALLÉ (ERREUR COURANTE)
+Si {terminal_diagnostics} contient "TypeScript non installé" ou "This is not the tsc command you are looking for" :
+1. Ajoute **OBLIGATOIREMENT** `typescript` dans `devDependencies` du `package.json`
+2. Utilise une version stable : `"typescript": "5.4.5"`
+3. Si le package.json n'a pas de scripts, ajoute: `"build": "tsc"`
+4. Crée un fichier minimal dans `src/` si le dossier est vide (ex: `src/index.ts` avec du code basique)
 
 # RÈGLES STRICTES SUR LES IMPORTS LOCAUX TYPESCRIPT (ERREUR FRÉQUENTE)
 Si l'erreur TSC indique `Cannot find module '../middlewares/...'` :

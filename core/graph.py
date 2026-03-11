@@ -410,6 +410,16 @@ class SpecGraphManager:
             except Exception as e:
                 logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
             
+            # ─── GARANTIR QUE TYPESCRIPT EST INSTALLÉ (CRÍTICA) ───
+            # Si on a détecté typescript manquant, on le force en dev
+            if "typescript" in state.get("missing_modules", []):
+                logger.warning("🔧 Forçage de l'installation de typescript...")
+                try:
+                    subprocess.run(["npm", "install", "--save-dev", "typescript"], 
+                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
+                except Exception as e:
+                    logger.error(f"⚠️ Installation forcée de typescript a échoué : {e}")
+            
             # ─── AUTO-RÉSOLUTION DES ERREURS TSC (Cannot find module 'X') ───
             tsc_missing_modules = state.get("missing_modules", [])
             if tsc_missing_modules:
@@ -419,8 +429,8 @@ class SpecGraphManager:
                 except Exception:
                     installed = set()
                     
-                # Filtrer ceux déjà installés pour ne pas boucler
-                modules_to_install = [m for m in tsc_missing_modules if m not in installed]
+                # Filtrer ceux déjà installés pour ne pas boucler (incluant typescript)
+                modules_to_install = [m for m in tsc_missing_modules if m not in installed and m != "typescript"]
                 if modules_to_install:
                     logger.warning(f"🚀 Auto-resolution TSC: installation de {modules_to_install}")
                     try:
@@ -732,15 +742,27 @@ class SpecGraphManager:
 
     # route_after_diagnostic supprimé — diagnostic va toujours vers task_enforcer
             
+    def _check_typescript_installed(self, project_dir: Path) -> bool:
+        """Vérifie si typescript est installé dans le projet."""
+        ts_path = project_dir / "node_modules" / "typescript"
+        return ts_path.exists()
+
     def diagnostic_node(self, state: AgentState) -> dict:
         """Nœud : Diagnostics réels (tsc --noEmit sur le vrai projet)."""
         logger.info("🔍 Exécution des diagnostics réels...")
-        import subprocess, re
+        import subprocess, re, json
         reports = []
         missing_modules = []
         
         for d in [self.root, self.root / "backend", self.root / "frontend"]:
             if (d / "package.json").exists():
+                # ─── VÉRIFICATION PRE-TSC : typescript installé? ───
+                if not self._check_typescript_installed(d):
+                    logger.warning(f"⚠️ TypeScript non installé dans {d.name}. Ajout à la liste des modules manquants.")
+                    missing_modules.append("typescript")
+                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTypeScript non installé dans node_modules. Exécutez: npm install --save-dev typescript")
+                    continue
+                
                 try:
                     res = subprocess.run(
                         "npx --yes tsc --noEmit --pretty false",

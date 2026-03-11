@@ -65,6 +65,10 @@ L'utilisateur a donné cette directive spécifique à l'implémenteur :
 - Règle 10 : SYNCHRONISATION DIAGNOSTICS RUNTIME (ABSOLUE).
   * Si {terminal_diagnostics} contient "✅" pour TOUS les modules, tu ne peux PAS rejeter pour des erreurs TypeScript ou de build.
   * Si {terminal_diagnostics} contient "❌ ÉCHEC", tu DOIS rejeter et citer les erreurs EXACTES du terminal dans ton action_corrective.
+  * **DISTINGUER ERREURS VS FICHIERS MANQUANTS** :
+    - Si {terminal_diagnostics} contient "TypeScript non installé", la raison est une ERREUR DE BUILD, pas des fichiers manquants. Action: "Erreur Build TypeScript: TypeScript non installé. Résolution: npm install --save-dev typescript"
+    - Si {terminal_diagnostics} contient "Cannot find module", la raison est une DÉPENDANCE MANQUANTE. Action: citer le module exact manquant.
+    - Si la checklist 9/9 est cochée mais {terminal_diagnostics} contient "❌ ÉCHEC", cela signifie que les fichiers existent mais le build échoue. Ne JAMAIS dire "TODO non réalisé" dans ce cas.
   * **INTERDICTION ABSOLUE** d'inventer des erreurs de build non présentes dans {terminal_diagnostics}. Le terminal est ta SEULE source de vérité pour les erreurs de compilation.
   * Si la checklist est à 100% ET le terminal est ✅ partout, le verdict DOIT être APPROUVÉ.
 
