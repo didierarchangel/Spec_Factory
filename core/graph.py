@@ -899,31 +899,31 @@ class SpecGraphManager:
                 "dependency_fixes": fixed_issues,
                 "state": state
             }
-                # 🛡️ Filter missing_modules: only keep those not installed
+            # 🛡️ Filter missing_modules: only keep those not installed
             import subprocess
-                import json
-                missing = state.get("missing_modules", [])
-                filtered_missing = []
-                for module in missing:
-                    try:
-                        result = subprocess.run([
-                            "npm", "list", module, "--json"
-                        ], capture_output=True, text=True)
-                        data = json.loads(result.stdout)
-                        if module not in data.get("dependencies", {}):
-                            filtered_missing.append(module)
-                    except Exception:
+            import json
+            missing = state.get("missing_modules", [])
+            filtered_missing = []
+            for module in missing:
+                try:
+                    result = subprocess.run([
+                        "npm", "list", module, "--json"
+                    ], capture_output=True, text=True)
+                    data = json.loads(result.stdout)
+                    if module not in data.get("dependencies", {}):
                         filtered_missing.append(module)
-                state["missing_modules"] = filtered_missing
-                state["dep_attempts"] = state.get("dep_attempts", 0) + 1
-                if state["dep_attempts"] > 2:
-                    logger.warning("Dependency loop detected")
-                    state["missing_modules"] = []
-                return {
-                    "dependency_issues_fixed": len(fixed_issues),
-                    "dependency_fixes": fixed_issues,
-                    "state": state
-                }
+                except Exception:
+                    filtered_missing.append(module)
+            state["missing_modules"] = filtered_missing
+            state["dep_attempts"] = state.get("dep_attempts", 0) + 1
+            if state["dep_attempts"] > 2:
+                logger.warning("Dependency loop detected")
+                state["missing_modules"] = []
+            return {
+                "dependency_issues_fixed": len(fixed_issues),
+                "dependency_fixes": fixed_issues,
+                "state": state
+            }
         except Exception as e:
             logger.error(f"❌ validate_dependency_node error: {e}")
             state["missing_modules"] = []
