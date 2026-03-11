@@ -1062,6 +1062,8 @@ class SpecGraphManager:
             # Cherche: `backend/src/..` ou `frontend/src/...` ou `path/to/file.ext`
             full_paths = re.findall(r'`([a-zA-Z0-9_\-./\\]+\.[a-zA-Z0-9]+)`', line)
             
+            full_path_suffixes = set()  # Garder trace des fichiers trouvés avec chemin complet
+            
             for path in full_paths:
                 # Normaliser les backslashes en forward slashes
                 path = path.replace('\\', '/')
@@ -1071,6 +1073,8 @@ class SpecGraphManager:
                 if path not in seen_full_paths:
                     required_files.append(path)
                     seen_full_paths.add(path)
+                    # Garder trace du suffix du chemin (ex: components/RegisterForm.tsx)
+                    full_path_suffixes.add(path.split('/')[-1])
             
             # Pattern 2: Cas particulier - fileName ET répertoire SÉPARÉS sur la même ligne
             # Exemple: ... `RegisterPage.tsx` ... dans `frontend/src/pages/`
@@ -1078,6 +1082,7 @@ class SpecGraphManager:
             # - Trouver tous les backtick'd items
             # - Séparer les fichiers (.ext) des répertoires (contient /)
             # - Si 1 fichier et >=1 répertoires, combiner
+            # - MAIS: Ignorer les fichiers déjà trouvés en Pattern 1
             
             # Extraire TOUS les items entre backticks
             all_backtick_items = re.findall(r'`([^`]+)`', line)
@@ -1101,7 +1106,8 @@ class SpecGraphManager:
                             seen_full_paths.add(item)
                 else:
                     # C'est potentiellement un fichier (pas de /)
-                    if '.' in item:
+                    # MAIS: Ne l'ajouter QUE s'il n'était pas en Pattern 1
+                    if '.' in item and item not in full_path_suffixes:
                         files_in_line.append(item)
             
             # Si on a exactement 1 fichier SANS chemin et 1+ répertoires, combiner

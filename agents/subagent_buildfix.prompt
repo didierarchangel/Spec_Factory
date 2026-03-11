@@ -66,19 +66,19 @@ Si le project est Next.js (vérifier `next.config.ts` ou `next.config.js`) :
    - **App Router** : `app/page.tsx` est la page d'accueil, `app/layout.tsx` est le layout
    - **Pages Router** : `pages/index.tsx` est la page d'accueil, `pages/_app.tsx` est le wrapper
 2. **Exports obligatoires** : Chaque page doit exporter `default` ou être une composant React
-   - Exemple: `export default function Page() { return <div>...</div> }`
-   - Ou avec async: `export default async function Page() { ... }`
+   - Exemple: `export default function Page() {{ return <div>...</div> }}`
+   - Ou avec async: `export default async function Page() {{ ... }}`
 3. **Import sans extension** : Comme React/Vite, NE JAMAIS inclure `.tsx` dans les imports entre fichiers locaux
    - ✅ Correct: `import Layout from './layout'`
    - ❌ Incorrect: `import Layout from './layout.tsx'`
 4. **Imports spéciaux** : Next.js utilise des imports/directives spéciaux:
-   - `import type { ReactNode } from 'react'` pour les types  
+   - `import type {{ ReactNode }} from 'react'` pour les types  
    - `'use client'` directive au début du fichier pour les Client Components
    - `'use server'` directive pour les Server Actions (async functions)
 5. **Next.js config** : Vérifier que `next.config.ts` existe et contient au minimum:
    ```javascript
-   /** @type {import('next').NextConfig} */
-   const nextConfig = {}
+   /** @type {{import('next').NextConfig}} */
+   const nextConfig = {{}}
    export default nextConfig
    ```
 6. **tsconfig.json pour Next.js** : Doit contenir `"jsx": "preserve"` (NOT react-jsx)
@@ -88,7 +88,7 @@ Si le project est Next.js (vérifier `next.config.ts` ou `next.config.js`) :
    - layout.tsx dans un dossier s'applique à lui et ses enfants
 8. **Erreur Module Resolution** : Next.js peut avoir mal configurer les paths
    - Vérifier `"baseUrl": "."` dans tsconfig.json
-   - Vérifier `"paths": { "@/*": ["./src/*"] }` si des alias @ sont utilisés
+   - Vérifier `"paths": {{ "@/*": ["./src/*"] }}` si des alias @ sont utilisés
 9. **next/link et next/image** : Ces composants Next.js DOIVENT être importés depuis 'next/link' ou 'next/image', pas de fallback HTML standard
 
 # CAS CRITIQUE : DÉTERMINER LE FRAMEWORK
