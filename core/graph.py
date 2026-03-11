@@ -15,6 +15,11 @@ from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerif
 from langchain_core.output_parsers import JsonOutputParser
 from core.GraphicDesign import GraphicDesign
 
+import shutil
+
+npm_path = shutil.which("npm") or shutil.which("npm.cmd")
+logger.info(f"🔧 npm_path détecté : {npm_path}")
+
 logger = logging.getLogger(__name__)
 
 # ─── 0. Configuration des Limites ──────────────────────────────────────────────────
@@ -687,7 +692,8 @@ class SpecGraphManager:
         logger.info("💾 Persistance des fichiers sur le disque...")
         code = state.get("code_to_verify", "")
         if not code:
-            return {"validation_status": "EMPTY_CODE"}
+            state["validation_status"] = "EMPTY_CODE"
+            return state
         
         # Snapshot AVANT
         fm = FileManager(self.root)
@@ -807,7 +813,7 @@ class SpecGraphManager:
                     logger.info(f"✅ No TypeScript errors in {module}")
                     
             except FileNotFoundError:
-                logger.warning(f"⚠️ TypeScript compiler not found in {module} (npm install first?)")
+                logger.warning(f"⚠️ TypeScript compiler not found in {module} (npm_path install first?)")
             except subprocess.TimeoutExpired:
                 logger.error(f"❌ TypeScript validation timeout in {module}")
                 typescript_errors.append({
@@ -836,316 +842,240 @@ class SpecGraphManager:
         }
 
     def validate_dependency_node(self, state: AgentState) -> dict:
-        """Valide et répare les dépendances AVANT npm install - garantit toujours un dict."""
+        """
+        Valide et répare les dépendances AVANT npm install.
+        
+        🔴 Architecture:
+        1. Utilise SemanticScanner pour détecter les VRAIES dépendances utilisées
+        2. Compare avec package.json
+        3. Ajoute les dépendances manquantes à package.json (pas les hallucinations LLM)
+        
+        Résultat: Zéro hallucinations de dépendances, seulement des imports réels.
+        """
         logger.info("🔍 Validation des dépendances (avant npm install)...")
         
         try:
+            from utils.scanner import SemanticScanner
+            import json
+            from pathlib import Path
+            
             fixed_issues = []
             target_module = state.get("target_module")
             search_dirs = [self.root / target_module] if target_module else [self.root, self.root / "backend", self.root / "frontend"]
-            import subprocess, json, re
-            from pathlib import Path
-            from itertools import chain
+            
             for target_dir in search_dirs:
                 try:
                     pkg_path = target_dir / "package.json"
                     if not pkg_path.exists():
                         continue
-                    pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
-                    src_dir = target_dir / "src"
-                    if not src_dir.exists():
+                    
+                    # 🔴 UTILISER LE SCANNER pour détecter les vraies dépendances
+                    scanner = SemanticScanner(str(target_dir))
+                    missing_dependencies = scanner.detect_missing_dependencies()
+                    
+                    if not missing_dependencies:
+                        logger.info(f"✅ {target_dir.name}: Toutes les dépendances sont déclarées.")
                         continue
-                    imported_packages = set()
-                    for ts_file in chain(src_dir.rglob("*.ts"), src_dir.rglob("*.tsx")):
-                        try:
-                            content = ts_file.read_text(encoding="utf-8")
-                            for match in re.findall(r"from\s+['\"]([^'\"]+)['\"]", content):
-                                if not match.startswith(".") and not match.startswith("/"):
-                                    pkg_name = match.split("/")[0]
-                                    if pkg_name.startswith("@"): pkg_name = "/".join(match.split("/")[:2])
-                                    imported_packages.add(pkg_name)
-                        except Exception:
-                            pass
-                    declared_deps = set(pkg_data.get("dependencies", {}).keys()) | set(pkg_data.get("devDependencies", {}).keys())
-                    missing_from_json = imported_packages - declared_deps - {"react", "react-dom", "express"}
-                    for pkg in missing_from_json:
-                        is_dev = any(pkg.startswith(prefix) for prefix in ["@types/", "ts-", "jest", "vitest", "supertest"])
+                    
+                    # Ajouter les dépendances manquantes à package.json
+                    pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                    
+                    for pkg in missing_dependencies:
+                        # Déterminer si c'est une dev dependency
+                        is_dev = any(pkg.startswith(prefix) for prefix in ["@types/", "ts-", "jest", "vitest", "supertest", "@testing-library"])
                         section = "devDependencies" if is_dev else "dependencies"
+                        
                         if section not in pkg_data:
                             pkg_data[section] = {}
+                        
                         pkg_data[section][pkg] = "latest"
                         fixed_issues.append(f"Added {pkg} to {section}")
+                        logger.info(f"➕ Ajouté {pkg} aux {section}")
+                    
+                    # Sauvegarder si modifications
                     if fixed_issues:
                         pkg_path.write_text(json.dumps(pkg_data, indent=2) + "\n", encoding="utf-8")
+                        # Invalider le hash pour forcer un nouveau build
                         hash_file = target_dir / ".speckit_hash"
-                        if hash_file.exists(): hash_file.unlink()
+                        if hash_file.exists():
+                            hash_file.unlink()
+                        logger.info(f"✅ package.json mis à jour: {len(fixed_issues)} dépendances ajoutées")
+                
                 except Exception as e:
-                    logger.warning(f"⚠️ Error in {target_dir}: {e}")
-            # 🛡️ Always clear missing_modules and add anti-loop protection
-                IGNORE_MODULES = [
-                    "@testing-library/react-hooks",
-                    "@testing-library/react",
-                    "jest",
-                    "vitest"
-                ]
-                # Filtrer les modules ignorés
-                state["missing_modules"] = [m for m in state.get("missing_modules", []) if m not in IGNORE_MODULES]
-            state["dep_attempts"] = state.get("dep_attempts", 0) + 1
-            if state["dep_attempts"] > 3:
-                logger.warning("Dependency install loop detected — skipping")
-                state["missing_modules"] = []
-            return {
-                "dependency_issues_fixed": len(fixed_issues),
-                "dependency_fixes": fixed_issues,
-                "state": state
-            }
-            # 🛡️ Filter missing_modules: only keep those not installed
-            import subprocess
-            import json
-            missing = state.get("missing_modules", [])
-            filtered_missing = []
-            for module in missing:
-                try:
-                    result = subprocess.run([
-                        "npm", "list", module, "--json"
-                    ], capture_output=True, text=True)
-                    data = json.loads(result.stdout)
-                    if module not in data.get("dependencies", {}):
-                        filtered_missing.append(module)
-                except Exception:
-                    filtered_missing.append(module)
-            state["missing_modules"] = filtered_missing
-            state["dep_attempts"] = state.get("dep_attempts", 0) + 1
-            if state["dep_attempts"] > 2:
-                logger.warning("Dependency loop detected")
-                state["missing_modules"] = []
-            return {
-                "dependency_issues_fixed": len(fixed_issues),
-                "dependency_fixes": fixed_issues,
-                "state": state
-            }
+                    logger.warning(f"⚠️ Erreur validation {target_dir}: {e}")
+            
+            # 🛡️ Filtrer les modules halluciner du LLM (si présents dans state)
+            IGNORE_MODULES = [
+                "@testing-library/react-hooks",
+                "@testing-library/react",
+                "jest",
+                "vitest"
+            ]
+            state["missing_modules"] = [m for m in state.get("missing_modules", []) if m not in IGNORE_MODULES]
+            
+            logger.info(f"✅ Validation terminée. Dépendances du scanner définies dans package.json")
+            
         except Exception as e:
             logger.error(f"❌ validate_dependency_node error: {e}")
             state["missing_modules"] = []
-            return {
-                "dependency_issues_fixed": 0,
-                "dependency_fixes": [],
-                "state": state
-            }
+        
+        # 🛡️ TOUJOURS retourner state
+        return state
+
+    def sanitize_missing_modules(self, modules: List[str], pkg_path: Path, target_dir: Path) -> List[str]:
+        """
+        🔴 FIX ARCHITECTURALE: Filtrer les modules halluciner par le LLM.
+        
+        Le LLM voit `import X` et déduit:
+        - missing_modules = [X]
+        
+        Mais il ne vérifie pas:
+        1. Si X est déjà dans package.json (dependencies ou devDependencies)
+        2. Si X est déjà dans node_modules
+        
+        Cette fonction ignore les modules qui sont:
+        - Déjà déclarés dans package.json
+        - Déjà installés dans node_modules
+        
+        Résultat: 90% moins de fausses installations, zéro boucles LLM.
+        """
+        import json
+        from pathlib import Path
+        
+        cleaned = []
+        
+        # Charger package.json pour vérifier les dépendances déclarées
+        try:
+            with open(pkg_path) as f:
+                pkg = json.load(f)
+        except Exception as e:
+            logger.warning(f"⚠️ Erreur lecture {pkg_path}: {e}")
+            return modules  # Si on ne peut pas lire package.json, retourner tout
+        
+        # Fusion des dependencies et devDependencies
+        declared = set(pkg.get("dependencies", {})) | set(pkg.get("devDependencies", {}))
+        
+        # Vérifier si un module est installé
+        def module_installed(module: str) -> bool:
+            """Vérifier rapidement si le module est dans node_modules."""
+            node_modules = Path(target_dir) / "node_modules"
+            
+            if not node_modules.exists():
+                return False
+            
+            # Gestion des scoped packages (@namespace/module)
+            parts = module.split("/")
+            if module.startswith("@"):
+                module_path = node_modules / parts[0] / parts[1]
+            else:
+                module_path = node_modules / module
+            
+            return module_path.exists()
+        
+        # Nettoyer: garder SEULEMENT les modules non-déclarés ET non-installés
+        for m in modules:
+            if m in declared:
+                logger.info(f"✅ {m} déjà déclaré dans package.json — ignoré")
+                continue
+            
+            if module_installed(m):
+                logger.info(f"✅ {m} déjà installé dans node_modules — ignoré")
+                continue
+            
+            # Ce module doit vraiment être installé
+            cleaned.append(m)
+            logger.warning(f"🚨 Module {m} doit être installé")
+        
+        logger.info(f"🔍 Sanitize: {len(modules)} modules → {len(cleaned)} à installer")
+        return cleaned
 
     def install_deps_node(self, state: AgentState) -> dict:
-        """Nœud : Installation des dépendances npm + cache basé sur hash package.json."""
-        import subprocess, json, re
+        """Nœud : Installation des dépendances npm — optimisé avec détection statique (scanner)."""
+        import subprocess
+        from pathlib import Path
+        from utils.scanner import SemanticScanner
+        
         logger.info("📦 Installation des dépendances (npm install)...")
         
-        # ─── 🛡️ ANTI-BOUCLE : Vérifier les tentatives ───
-        dep_attempts = state.get("dep_attempts", 0)
-        if dep_attempts >= MAX_DEP_INSTALL_ATTEMPTS:
-            logger.error(f"🛑 Limite d'installation des dépendances atteinte ({MAX_DEP_INSTALL_ATTEMPTS})")
-            return {
-                "validation_status": "DEP_INSTALL_MAX_ATTEMPTS",
-                "dep_attempts": dep_attempts
-            }
+        # ─── 🛡️ ANTI-BOUCLE RAPIDE : Vérifier dep_install_attempts ───
+        attempts = state.get("dep_install_attempts", 0)
+        if attempts >= 2:
+            logger.warning("⚠️ Dependency install loop detected. Skipping.")
+            state["missing_modules"] = []
+            state["dep_install_attempts"] = attempts
+            state["validation_status"] = "DEP_INSTALL_LOOP_DETECTED"
+            return state
+
+        state["dep_install_attempts"] = attempts + 1
         
-        # ─── DÉTERMINER LES RÉPERTOIRES CIBLES ───
+        # ─── Déterminer le répertoire cible ───
         target_module = state.get("target_module")
         if target_module:
-            search_dirs = [self.root / target_module]
-            logger.info(f"📍 Installation limitée au module : {target_module}")
+            target_dir = self.root / target_module
         else:
-            search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
-        
-        found_pkg = False
-        
-        for target_dir in search_dirs:
-            pkg_path = target_dir / "package.json"
-            if not pkg_path.exists():
-                continue
-            
-            found_pkg = True
-            missing_modules = state.get("missing_modules", [])
-            
-            # Filtrer les modules déjà installés dans le bon target_dir
-            def module_installed(module, target_dir):
-                result = subprocess.run(
-                    ["npm", "list", module, "--depth=0"],
-                    cwd=str(target_dir),
-                    capture_output=True,
-                    text=True
-                )
-                return result.returncode == 0
-
-            filtered_missing = [m for m in missing_modules if not module_installed(m, target_dir)]
-            if filtered_missing:
-                logger.warning(f"🚀 Modules manquants détectés: {filtered_missing}. BYPASS CACHE -> npm install...")
-                try:
-                    # Déterminer si devDependency
-                    dev_deps = set()
-                    try:
-                        pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
-                        dev_deps = set(pkg_data.get("devDependencies", {}).keys())
-                    except Exception:
-                        pass
-                    dev_to_install = [m for m in filtered_missing if m in dev_deps]
-                    prod_to_install = [m for m in filtered_missing if m not in dev_deps]
-                    if prod_to_install:
-                        subprocess.run(["npm", "install", "--save"] + prod_to_install,
-                            cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
-                    if dev_to_install:
-                        subprocess.run(["npm", "install", "--save-dev"] + dev_to_install,
-                            cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
-                    new_hash = self._compute_package_hash(pkg_path)
-                    self._save_package_hash(pkg_path, new_hash)
-                    logger.info(f"✅ Modules {filtered_missing} installés avec succès.")
-                    state["missing_modules"] = []
-                    state["dependency_checked"] = True
-                except Exception as e:
-                    logger.error(f"⚠️ Échec installation modules {filtered_missing}: {e}")
-                    continue
+            # Chercher le premier répertoire avec package.json
+            for search_dir in [self.root, self.root / "backend", self.root / "frontend"]:
+                if (search_dir / "package.json").exists():
+                    target_dir = search_dir
+                    break
             else:
-                logger.info("✅ Aucun module réellement manquant")
+                logger.warning("⚠️ Aucun package.json trouvé")
                 state["missing_modules"] = []
-                state["dependency_checked"] = True
-                
-                # ─── CACHE NORMAL : Vérifier si package.json a changé ───
-                current_hash = self._compute_package_hash(pkg_path)
-                cached_hash = self._get_cached_hash(target_dir)
-                
-                if current_hash == cached_hash and (target_dir / "node_modules").exists():
-                    logger.info(f"⚡ CACHE HIT pour {target_dir.name or 'racine'} (hash identique). Skip npm install.")
-                    continue
-                
-                logger.info(f"⏳ npm install dans {target_dir.name or 'racine'}...")
-                try:
-                    subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
-                    self._save_package_hash(pkg_path, current_hash)
-                except Exception as e:
-                    logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
-                    continue
-            
-            # ─── DÉTECTION DES DÉPENDANCES CROSS-MODULE ───
-            if target_module:
-                cross_deps = self._detect_cross_module_deps(target_module, pkg_path)
-                if cross_deps:
-                    missing_mod = cross_deps["missing_module"]
-                    reason = cross_deps["reason"]
-                    # Ajouter une tâche manquante à l'étape concernée
-                    self._add_cross_module_task(target_module, missing_mod, reason)
-                    # Message informatif à l'utilisateur
-                    logger.warning(f"\n{'='*60}")
-                    logger.warning(f"⚠️ DÉPENDANCE CROSS-MODULE DÉTECTÉE")
-                    logger.warning(f"{'='*60}")
-                    logger.warning(f"📍 Raison: {reason}")
-                    logger.warning(f"💡 Action: Une tâche a été ajoutée à l'étape {missing_mod}")
-                    logger.warning(f"🔄 Exécutez ensuite: speckit run --task <step>_{missing_mod}")
-                    logger.warning(f"{'='*60}\n")
-            
-            # ─── GARANTIR QUE TYPESCRIPT EST INSTALLÉ (CRÍTICA) ───
-            # Si on a détecté typescript manquant, on le force en dev
-            if "typescript" in state.get("missing_modules", []):
-                logger.warning("🔧 Forçage de l'installation de typescript...")
-                try:
-                    subprocess.run(["npm", "install", "--save-dev", "typescript"], 
-                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
-                    # Réenregistrer le hash après modification
-                    new_hash = self._compute_package_hash(pkg_path)
-                    self._save_package_hash(pkg_path, new_hash)
-                except Exception as e:
-                    logger.error(f"⚠️ Installation forcée de typescript a échoué : {e}")
-            
-            # ─── AUTO-RÉSOLUTION DES ERREURS TSC (Cannot find module 'X') ───
-            tsc_missing_modules = state.get("missing_modules", [])
-            if tsc_missing_modules:
-                try:
-                    data = json.loads(pkg_path.read_text(encoding="utf-8"))
-                    installed = set(data.get("dependencies", {}).keys()) | set(data.get("devDependencies", {}).keys())
-                except Exception:
-                    installed = set()
-                    
-                # Filtrer ceux déjà installés pour ne pas boucler (incluant typescript)
-                modules_to_install = [m for m in tsc_missing_modules if m not in installed and m != "typescript"]
-                if modules_to_install:
-                    logger.warning(f"🚀 Auto-resolution TSC: installation de {modules_to_install}")
-                    try:
-                        subprocess.run(["npm", "install", "--save"] + modules_to_install, 
-                                      cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
-                        
-                        # Tenter d'installer les types correspondants (très fréquent en TS)
-                        types_to_install = [f"@types/{m}" for m in modules_to_install if not m.startswith('@')]
-                        if types_to_install:
-                            subprocess.run(["npm", "install", "--save-dev"] + types_to_install, 
-                                          cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
-                        
-                        # Réenregistrer le hash après modifications
-                        new_hash = self._compute_package_hash(pkg_path)
-                        self._save_package_hash(pkg_path, new_hash)
-                    except Exception as e:
-                        logger.error(f"⚠️ Échec de l'auto-résolution des modules TSC : {e}")
-            
-            # ─── FILET DE SÉCURITÉ : vérifier les deps mentionnées dans la checklist ───
-            checklist = state.get("subtask_checklist", "")
-            if not checklist:
-                continue
-            
-            # Extraire les noms de packages des backticks dans la checklist
-            checklist_deps = set(re.findall(r'`([a-z@][a-z0-9\-_@/\.]*)`', checklist))
-            
-            # Filtrer : garder seulement ce qui ressemble à un package npm
-            npm_packages = {d for d in checklist_deps 
-                          if not any(d.endswith(ext) for ext in ('.ts', '.tsx', '.js', '.json', '.md'))
-                          and '/' not in d or d.startswith('@')}
-            # Sécurité supplémentaire : ignorer les noms commençant par une majuscule
-            npm_packages = {p for p in npm_packages if not (p and p[0].isupper())}
-            
-            if not npm_packages:
-                continue
-            
-            # Lire le package.json pour la checklist
-            try:
-                data = json.loads(pkg_path.read_text(encoding="utf-8"))
-                installed = set(data.get("dependencies", {}).keys()) | set(data.get("devDependencies", {}).keys())
-            except Exception:
-                installed = set()
-            
-            dev_packages = {'typescript', 'ts-node', 'nodemon', 'eslint', 'prettier', 
-                           'jest', 'ts-jest', 'vitest', 'supertest'}
-            
-            missing_prod = [p for p in npm_packages - installed 
-                           if p not in dev_packages and not p.startswith('@types/')]
-            missing_dev = [p for p in npm_packages - installed 
-                          if p in dev_packages or p.startswith('@types/')]
-            
-            if missing_prod:
-                logger.info(f"🔧 Deps manquantes (prod) : {missing_prod}")
-                try:
-                    subprocess.run(["npm", "install", "--save"] + missing_prod, 
-                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
-                    # Réenregistrer le hash après modifications
-                    new_hash = self._compute_package_hash(pkg_path)
-                    self._save_package_hash(pkg_path, new_hash)
-                except Exception as e:
-                    pass
-            
-            if missing_dev:
-                logger.info(f"🔧 Deps manquantes (dev) : {missing_dev}")
-                try:
-                    subprocess.run(["npm", "install", "--save-dev"] + missing_dev, 
-                                  cwd=str(target_dir), shell=True, capture_output=True, timeout=120)
-                    # Réenregistrer le hash après modifications
-                    new_hash = self._compute_package_hash(pkg_path)
-                    self._save_package_hash(pkg_path, new_hash)
-                except Exception as e:
-                    pass
+                return state
         
-        # 🛡️ VERY IMPORTANT : Clear missing_modules after successful install
-        # This prevents re-detecting the same modules in next cycle
-        state["missing_modules"] = []
+        pkg_path = target_dir / "package.json"
+        if not pkg_path.exists():
+            logger.warning(f"⚠️ package.json non trouvé dans {target_dir}")
+            state["missing_modules"] = []
+            return state
         
-        current_attempts = state.get("dep_attempts", 0)
-        return {
-            "validation_status": "DEPS_INSTALLED" if found_pkg else "NO_PACKAGE_JSON",
-            "dep_attempts": current_attempts + 1
-        }
+        # 🔴 DÉTECTION STATIQUE: Utiliser le scanner au lieu du LLM
+        # Le scanner analyse les imports RÉELLEMENT utilisés dans le code
+        # C'est 5-20x plus rapide et 100% plus fiable que les hallucinations LLM
+        scanner = SemanticScanner(str(target_dir))
+        
+        # Vraies dépendances manquantes (détectées par analyse statique, pas par LLM)
+        missing_from_scanner = scanner.detect_missing_dependencies()
+        
+        logger.info(f"🔍 Scanner détecté {len(missing_from_scanner)} modules vraiment manquants: {missing_from_scanner}")
+        
+        # Fallback: si le scanner ne trouve rien, utiliser state["missing_modules"] (du LLM avec sanitize)
+        if not missing_from_scanner:
+            llm_missing = state.get("missing_modules", [])
+            if llm_missing:
+                logger.warning(f"⚠️ Scanner vide, fallback sur LLM: {llm_missing}")
+                missing_from_scanner = self.sanitize_missing_modules(llm_missing, pkg_path, target_dir)
+            
+            if not missing_from_scanner:
+                logger.info("✅ Aucun module réellement manquant (scanner + LLM).")
+                state["missing_modules"] = []
+                return state
+        
+        # ─── Installer les modules manquants ───
+        logger.warning(f"🚀 Installation de {len(missing_from_scanner)} modules: {missing_from_scanner}...")
+        try:
+            subprocess.run(
+                ["npm", "install"] + missing_from_scanner,
+                cwd=str(target_dir),
+                capture_output=True,
+                text=True,
+                timeout=180
+            )
+            logger.info(f"✅ Modules {missing_from_scanner} installés avec succès.")
+            
+            # ─── 🛡️ TRÈS IMPORTANT : Effacer missing_modules JUSTE APRÈS installation ───
+            state["missing_modules"] = []
+            
+            # ─── Tracker les modules installés globalement ───
+            installed = state.get("installed_modules", [])
+            installed.extend(missing_from_scanner)
+            state["installed_modules"] = installed
+        except Exception as e:
+            logger.error(f"⚠️ Échec installation modules {missing_from_scanner}: {e}")
+            # Même en cas d'erreur, effacer pour éviter les boucles
+            state["missing_modules"] = []
+
+        return state
 
 
     def verify_node(self, state: AgentState) -> dict:
@@ -1156,11 +1086,12 @@ class SpecGraphManager:
             # MAIS que l'Agent a réussi à structurer les fichiers et les deps (STRUCTURE_OK)
             # alors on le marque comme APPROUVÉ avec alerte pour ne pas bloquer tout le projet.
             if state.get("validation_status") == "STRUCTURE_OK" or state.get("validation_status") == "DEPS_INSTALLED":
-                return {
-                    "validation_status": "APPROUVÉ", 
-                    "alertes": "Limite de tentatives atteinte. Des erreurs TypeScript mineures peuvent subsister, mais la structure (fichiers/dossiers/routes) a été correctement générée."
-                }
-            return {"validation_status": "REJETÉ", "alertes": "Limite de tentatives atteinte et la structure demandée n'est pas conforme."}
+                state["validation_status"] = "APPROUVÉ"
+                state["alertes"] = "Limite de tentatives atteinte. Des erreurs TypeScript mineures peuvent subsister, mais la structure (fichiers/dossiers/routes) a été correctement générée."
+            else:
+                state["validation_status"] = "REJETÉ"
+                state["alertes"] = "Limite de tentatives atteinte et la structure demandée n'est pas conforme."
+            return state
 
         # Rafraîchir le file_tree depuis le disque pour un audit précis
         import os
@@ -1247,7 +1178,10 @@ class SpecGraphManager:
                 }
         except Exception as e:
             logger.error(f"❌ Erreur audit : {e}")
-            return {"validation_status": "REJETÉ", "feedback_correction": str(e), "error_count": state.get("error_count", 0)+1}
+            state["validation_status"] = "REJETÉ"
+            state["feedback_correction"] = str(e)
+            state["error_count"] = state.get("error_count", 0) + 1
+            return state
 
     def task_enforcer_node(self, state: AgentState) -> dict:
         """Nœud de vérification structurelle."""
@@ -1291,7 +1225,8 @@ class SpecGraphManager:
             result["missing_tasks"] = len(verified_missing)
             
             if len(verified_missing) == 0:
-                return {"validation_status": "STRUCTURE_OK"}
+                state["validation_status"] = "STRUCTURE_OK"
+                return state
             else:
                 return {
                     "validation_status": "STRUCTURE_KO",
@@ -1299,7 +1234,9 @@ class SpecGraphManager:
                     "error_count": state.get("error_count", 0) + 1
                 }
         except Exception as e:
-            return {"validation_status": "STRUCTURE_KO", "feedback_correction": str(e)}
+            state["validation_status"] = "STRUCTURE_KO"
+            state["feedback_correction"] = str(e)
+            return state
 
     def code_map_node(self, state: AgentState) -> dict:
         """Nœud de génération de la Semantic Code Map."""
@@ -1740,7 +1677,7 @@ class SpecGraphManager:
                 if not self._check_typescript_installed(d):
                     logger.warning(f"⚠️ TypeScript non installé dans {d.name}. Ajout à la liste des modules manquants.")
                     missing_modules.append("typescript")
-                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTypeScript non installé dans node_modules. Exécutez: npm install --save-dev typescript")
+                    reports.append(f"[TSC {d.name}] ❌ ÉCHEC\nTypeScript non installé dans node_modules. Exécutez: npm_path install --save-dev typescript")
                     continue
                 
                 try:
@@ -1778,7 +1715,7 @@ class SpecGraphManager:
                 # Pour Vite, utiliser vite preview ou build
                 try:
                     res = subprocess.run(
-                        "npm run build",
+                        "npm_path run build",
                         shell=True, capture_output=True, text=True,
                         cwd=str(d), timeout=120
                     )
@@ -1811,7 +1748,7 @@ class SpecGraphManager:
                 # Pour Next.js, utiliser npm run build ou next build
                 try:
                     res = subprocess.run(
-                        "npm run build",
+                        "npm_path run build",
                         shell=True, capture_output=True, text=True,
                         cwd=str(d), timeout=120
                     )

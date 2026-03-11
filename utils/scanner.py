@@ -1,8 +1,16 @@
 import os
+import re
+import json
 from pathlib import Path
 
 class SemanticScanner:
     """Scanne la structure d'un projet pour fournir un contexte sémantique à l'IA."""
+    
+    # 🔴 Constantes pour détection des dépendances
+    NODE_BUILTINS = {"fs", "path", "http", "https", "os", "sys", "util", "events", "stream"}
+    IMPORT_RE = re.compile(
+        r"(?:import\s+.+\s+from\s+['\"]([^'\"]+)['\"])|(?:require\(['\"]([^'\"]+)['\"]\))"
+    )
     
     def __init__(self, root_path: str = "."):
         self.root = Path(root_path)
@@ -73,3 +81,124 @@ class SemanticScanner:
             if (self.root / f).exists():
                 configs.append(f)
         return configs
+
+    def _extract_imports(self, file_path: Path) -> set:
+        """
+        🔴 Extrait les imports d'un fichier TypeScript/JavaScript.
+        
+        Gère:
+        - import X from 'module'
+        - import { X } from 'module'
+        - require('module')
+        - Scoped packages (@namespace/package)
+        - Ignore les imports locaux (./module, ../module)
+        """
+        imports = set()
+        
+        try:
+            text = file_path.read_text(encoding="utf-8")
+            
+            for match in self.IMPORT_RE.findall(text):
+                # match est un tuple: (import_match, require_match)
+                # un seul sera non-vide
+                module = match[0] or match[1]
+                
+                if not module:
+                    continue
+                
+                # Ignorer les imports locaux (./module, ../module)
+                if module.startswith("."):
+                    continue
+                
+                # Extraire le package root (avant le premier /)
+                # Pour @namespace/package, on garde les deux parties
+                if module.startswith("@"):
+                    parts = module.split("/")
+                    if len(parts) >= 2:
+                        pkg_name = f"{parts[0]}/{parts[1]}"
+                    else:
+                        pkg_name = parts[0]
+                else:
+                    pkg_name = module.split("/")[0]
+                
+                imports.add(pkg_name)
+        
+        except Exception as e:
+            pass  # Silencieusement ignorer les erreurs de lecture
+        
+        return imports
+
+    def detect_dependencies(self) -> set:
+        """
+        🔴 Analyse les imports du projet pour détecter les dépendances npm.
+        
+        Scope:
+        - Scanne tous les fichiers .ts, .tsx, .js, .jsx
+        - Ignore node_modules et autres dossiers bruyants
+        - Retourne un set des modules utilisés
+        
+        Exemple:
+        - Trouve: '@testing-library/react', 'react', 'express'
+        - Retourne: {'react', '@testing-library/react', 'express'}
+        """
+        modules = set()
+        
+        for root, dirs, files in os.walk(str(self.root)):
+            # Filtrer les répertoires ignorés
+            dirs[:] = [d for d in dirs if d not in self.ignored_dirs]
+            
+            for file in files:
+                path = Path(root) / file
+                
+                # Analyser SEULEMENT les fichiers TypeScript/JavaScript
+                if path.suffix not in {".ts", ".tsx", ".js", ".jsx"}:
+                    continue
+                
+                # Extraire et fusionner les imports
+                modules |= self._extract_imports(path)
+        
+        return modules
+
+    def detect_missing_dependencies(self) -> list[str]:
+        """
+        🔴 Compare les imports utilisés avec package.json.
+        
+        Logique:
+        1. Charge package.json (dependencies + devDependencies)
+        2. Analyse les imports du projet
+        3. Retourne les modules utilisés MAIS non déclarés
+        
+        Résultat:
+        - Liste les dépendances manquantes
+        - Ignore les modules intégrés Node.js (fs, path, http)
+        - Ignore react, react-dom (souvent pré-installés)
+        
+        Return:
+        - list[str]: dépendances vraiment manquantes
+        """
+        pkg_path = self.root / "package.json"
+        
+        if not pkg_path.exists():
+            return []
+        
+        try:
+            pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        
+        # Fusion des dépendances déclarées
+        declared = set(pkg.get("dependencies", {}))
+        declared |= set(pkg.get("devDependencies", {}))
+        
+        # Détection des imports utilisés
+        used = self.detect_dependencies()
+        
+        # Filtrer les modules disponibles nativement
+        used -= self.NODE_BUILTINS
+        used -= {"react", "react-dom"}  # Souvent pré-installés
+        
+        # Trouver ce qui manque
+        missing = [m for m in used if m not in declared]
+        
+        return sorted(missing)
+
