@@ -26,6 +26,7 @@ logger.info(f"🔧 npm_path détecté : {npm_path}")
 # ─── 0. Configuration des Limites ──────────────────────────────────────────────────
 MAX_RETRIES = 3
 MAX_DEP_INSTALL_ATTEMPTS = 3  # Limit dependency install loops
+MAX_GRAPH_STEPS = 10  # 🛡️ Maximum number of graph routing decisions (prevents infinite cycles)
 
 # ─── 1. État du graphe (ou StateGraph/Mémoire partagée) ─────────────────────────────
 
@@ -923,88 +924,19 @@ class SpecGraphManager:
         # 🛡️ TOUJOURS retourner state
         return state
 
-    def sanitize_missing_modules(self, modules: List[str], pkg_path: Path, target_dir: Path) -> List[str]:
-        """
-        🔴 FIX ARCHITECTURALE: Filtrer les modules halluciner par le LLM.
-        
-        Le LLM voit `import X` et déduit:
-        - missing_modules = [X]
-        
-        Mais il ne vérifie pas:
-        1. Si X est déjà dans package.json (dependencies ou devDependencies)
-        2. Si X est déjà dans node_modules
-        
-        Cette fonction ignore les modules qui sont:
-        - Déjà déclarés dans package.json
-        - Déjà installés dans node_modules
-        
-        Résultat: 90% moins de fausses installations, zéro boucles LLM.
-        """
-        import json
-        from pathlib import Path
-        
-        cleaned = []
-        
-        # Charger package.json pour vérifier les dépendances déclarées
-        try:
-            with open(pkg_path) as f:
-                pkg = json.load(f)
-        except Exception as e:
-            logger.warning(f"⚠️ Erreur lecture {pkg_path}: {e}")
-            return modules  # Si on ne peut pas lire package.json, retourner tout
-        
-        # Fusion des dependencies et devDependencies
-        declared = set(pkg.get("dependencies", {})) | set(pkg.get("devDependencies", {}))
-        
-        # Vérifier si un module est installé
-        def module_installed(module: str) -> bool:
-            """Vérifier rapidement si le module est dans node_modules."""
-            node_modules = Path(target_dir) / "node_modules"
-            
-            if not node_modules.exists():
-                return False
-            
-            # Gestion des scoped packages (@namespace/module)
-            parts = module.split("/")
-            if module.startswith("@"):
-                module_path = node_modules / parts[0] / parts[1]
-            else:
-                module_path = node_modules / module
-            
-            return module_path.exists()
-        
-        # Nettoyer: garder SEULEMENT les modules non-déclarés ET non-installés
-        for m in modules:
-            if m in declared:
-                logger.info(f"✅ {m} déjà déclaré dans package.json — ignoré")
-                continue
-            
-            if module_installed(m):
-                logger.info(f"✅ {m} déjà installé dans node_modules — ignoré")
-                continue
-            
-            # Ce module doit vraiment être installé
-            cleaned.append(m)
-            logger.warning(f"🚨 Module {m} doit être installé")
-        
-        logger.info(f"🔍 Sanitize: {len(modules)} modules → {len(cleaned)} à installer")
-        return cleaned
-
     def install_deps_node(self, state: AgentState) -> dict:
-        """Nœud : Installation des dépendances npm — optimisé avec détection statique (scanner)."""
+        """Nœud : Installation des dépendances npm — détection statique (scanner) SEULE source de vérité."""
         import subprocess
         from pathlib import Path
         from utils.scanner import SemanticScanner
         
         logger.info("📦 Installation des dépendances (npm install)...")
         
-        # ─── 🛡️ ANTI-BOUCLE RAPIDE : Vérifier dep_install_attempts ───
+        # ─── 🛡️ ANTI-BOUCLE NIVEAU 1: Vérifier dep_install_attempts ───
         attempts = state.get("dep_install_attempts", 0)
-        if attempts >= 2:
-            logger.warning("⚠️ Dependency install loop detected. Skipping.")
+        if attempts >= 1:
+            logger.warning("⚠️ Dependency install already attempted. Skipping to prevent loops.")
             state["missing_modules"] = []
-            state["dep_install_attempts"] = attempts
-            state["validation_status"] = "DEP_INSTALL_LOOP_DETECTED"
             return state
 
         state["dep_install_attempts"] = attempts + 1
@@ -1030,49 +962,68 @@ class SpecGraphManager:
             state["missing_modules"] = []
             return state
         
-        # 🔴 DÉTECTION STATIQUE: Utiliser le scanner au lieu du LLM
+        # 🔴 DÉTECTION STATIQUE: Scanner = SOURCE DE VÉRITÉ
         # Le scanner analyse les imports RÉELLEMENT utilisés dans le code
-        # C'est 5-20x plus rapide et 100% plus fiable que les hallucinations LLM
+        # C'est la seule vérité fiable. Le LLM peut halluciner, pas le code source.
         scanner = SemanticScanner(str(target_dir))
-        
-        # Vraies dépendances manquantes (détectées par analyse statique, pas par LLM)
         missing_from_scanner = scanner.detect_missing_dependencies()
         
         logger.info(f"🔍 Scanner détecté {len(missing_from_scanner)} modules vraiment manquants: {missing_from_scanner}")
         
-        # Fallback: si le scanner ne trouve rien, utiliser state["missing_modules"] (du LLM avec sanitize)
+        # ═══ RÈGLE ARCHITECTURALE ═══
+        # Si le scanner dit 0 → c'est 0
+        # Pas de fallback au LLM (qui peut halluciner)
         if not missing_from_scanner:
-            llm_missing = state.get("missing_modules", [])
-            if llm_missing:
-                logger.warning(f"⚠️ Scanner vide, fallback sur LLM: {llm_missing}")
-                missing_from_scanner = self.sanitize_missing_modules(llm_missing, pkg_path, target_dir)
-            
-            if not missing_from_scanner:
-                logger.info("✅ Aucun module réellement manquant (scanner + LLM).")
-                state["missing_modules"] = []
-                return state
+            logger.info("✅ Scanner confirme : aucune dépendance manquante.")
+            state["missing_modules"] = []
+            return state
+        
+        # ─── 🛡️ ANTI-BOUCLE NIVEAU 2: Filtrer les modules déjà tentés ───
+        attempted = state.get("attempted_installs", [])
+        filtered_missing = [m for m in missing_from_scanner if m not in attempted]
+        
+        if not filtered_missing:
+            logger.info(f"⚠️ Tous les modules ont déjà été tentés: {missing_from_scanner}")
+            logger.warning("🛑 Arrêt des tentatives d'installation pour éviter la boucle infinie.")
+            state["missing_modules"] = []
+            return state
+        
+        if len(filtered_missing) < len(missing_from_scanner):
+            skipped = set(missing_from_scanner) - set(filtered_missing)
+            logger.info(f"⏭️  Modules déjà tentés (ignorés): {list(skipped)}")
         
         # ─── Installer les modules manquants ───
-        logger.warning(f"🚀 Installation de {len(missing_from_scanner)} modules: {missing_from_scanner}...")
+        logger.warning(f"🚀 Installation de {len(filtered_missing)} modules: {filtered_missing}...")
+        
+        # 🛡️ Tracker les tentatives avant d'essayer
+        state["attempted_installs"] = attempted + filtered_missing
+        
         try:
+            import shutil
+            npm_path = shutil.which("npm") or shutil.which("npm.cmd")
+            if not npm_path:
+                logger.error("❌ npm not found in PATH")
+                state["missing_modules"] = []
+                return state
+            
             subprocess.run(
-                ["npm", "install"] + missing_from_scanner,
+                [npm_path, "install"] + filtered_missing,
                 cwd=str(target_dir),
                 capture_output=True,
                 text=True,
                 timeout=180
             )
-            logger.info(f"✅ Modules {missing_from_scanner} installés avec succès.")
+            logger.info(f"✅ Modules {filtered_missing} installés avec succès.")
             
-            # ─── 🛡️ TRÈS IMPORTANT : Effacer missing_modules JUSTE APRÈS installation ───
+            # ─── 🛡️ Effacer missing_modules APRÈS installation ───
             state["missing_modules"] = []
             
-            # ─── Tracker les modules installés globalement ───
+            # ─── Tracker les modules installés ───
             installed = state.get("installed_modules", [])
-            installed.extend(missing_from_scanner)
+            installed.extend(filtered_missing)
             state["installed_modules"] = installed
         except Exception as e:
-            logger.error(f"⚠️ Échec installation modules {missing_from_scanner}: {e}")
+            logger.error(f"⚠️ Échec installation modules {filtered_missing}: {e}")
             # Même en cas d'erreur, effacer pour éviter les boucles
             state["missing_modules"] = []
 
@@ -1907,8 +1858,22 @@ class SpecGraphManager:
     def route_after_enf(self, state: AgentState) -> str:
         """Route après TaskEnforcer : vérifie à la fois les erreurs TSC et structurelles.
         
-        ⚠️ PROTECTION STRICTE : Ignore les erreurs dans les modules non-cibles.
+        ⚠️ PROTECTIONS MULTI-NIVEAUX:
+        - graph_steps: limite totale des cycles du graphe
+        - dep_attempts: limite des tentatives d'installation des dépendances
+        - error_count: limite des essais de correction
         """
+        
+        # 🛡️ PROTECTION NIVEAU 1: Limite globale des cycles du graphe
+        graph_steps = state.get("graph_steps", 0)
+        if graph_steps >= MAX_GRAPH_STEPS:
+            logger.error(f"🚨 Graph execution limit reached ({MAX_GRAPH_STEPS} steps). Exiting to verify.")
+            return "verify_node"
+        
+        state["graph_steps"] = graph_steps + 1
+        logger.debug(f"📊 Graph step {state['graph_steps']}/{MAX_GRAPH_STEPS}")
+        
+        # ─────────────────────────────────────────────────────────────
         target_module = state.get("target_module")
         terminal_diag = state.get("terminal_diagnostics", "")
         
