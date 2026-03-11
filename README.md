@@ -73,6 +73,32 @@ speckit run --component 04_chat
 
 ---
 
+## 📋 Prérequis Obligatoires
+
+Avant de pouvoir utiliser Speckit.Factory, assurez-vous que votre machine possède:
+
+### 1️⃣ Python 3.12 (Minimum)
+Speckit.Factory nécessite **Python 3.12 ou supérieur** pour fonctionner correctement.
+
+Vérifiez votre version:
+```bash
+python --version
+```
+
+Si vous n'avez pas Python 3.12, téléchargez-le depuis [python.org](https://www.python.org/downloads/).
+
+### 2️⃣ Installer `uv` (Gestionnaire de Paquets Python)
+`uv` est un gestionnaire de paquets ultra-rapide requuis pour exécuter les commandes `speckit`.
+
+Installez-le avec:
+```bash
+pip install uv
+```
+
+> **⚠️ Important:** Sans `uv` installé, les commandes `speckit` ne marcheront pas et vous obtiendrez une erreur: `uvx: The term 'uvx' is not recognized...`
+
+---
+
 ## ⚡ Démarrage Ultra Rapide (5 Minutes)
 
 ### Étape 1: Initialiser le projet
