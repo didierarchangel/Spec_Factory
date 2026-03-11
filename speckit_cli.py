@@ -675,7 +675,10 @@ def run(task, component, provider, model, instruction):
         final_state = initial_state
         for output in graph_manager.app.stream(initial_state):
             for node_name, result in output.items():
-                final_state.update(result)
+                if result is not None:  # Defensive: ensure node returns a dict
+                    final_state.update(result)
+                else:
+                    logger.warning(f"⚠️ Node {node_name} returned None instead of dict")
         
         # 5. Ground Truth : vérification réelle sur disque avant validation finale
         gt_result = manager_etapes.mark_step_as_completed(target_id, synthesis="", project_root=".")
