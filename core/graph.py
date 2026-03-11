@@ -540,19 +540,42 @@ class SpecGraphManager:
             
             found_pkg = True
             
-            # ─── CACHE : Vérifier si package.json a changé ───
-            current_hash = self._compute_package_hash(pkg_path)
-            cached_hash = self._get_cached_hash(target_dir)
+            # ─── VÉRIFIER D'ABORD S'IL Y A DES MODULES MANQUANTS ───
+            missing_modules = state.get("missing_modules", [])
             
-            if current_hash == cached_hash and (target_dir / "node_modules").exists():
-                logger.info(f"⚡ CACHE HIT pour {target_dir.name or 'racine'} (hash identique). Skip npm install.")
-                continue
-            
-            logger.info(f"⏳ npm install dans {target_dir.name or 'racine'}...")
-            try:
-                subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
-                # Sauvegarder le hash après une installation réussie
-                self._save_package_hash(pkg_path, current_hash)
+            if missing_modules:
+                # 🔴 BYPASS LE CACHE : Si des modules sont manquants, les installer directement
+                logger.warning(f"🚀 Modules manquants détectés: {missing_modules}. BYPASS CACHE -> npm install...")
+                try:
+                    # Installer les modules manquants spécifiquement
+                    subprocess.run(
+                        ["npm", "install"] + missing_modules,
+                        cwd=str(target_dir),
+                        shell=True,
+                        capture_output=True,
+                        timeout=180
+                    )
+                    # Réenregistrer le hash après modification
+                    new_hash = self._compute_package_hash(pkg_path)
+                    self._save_package_hash(pkg_path, new_hash)
+                    logger.info(f"✅ Modules {missing_modules} installés avec succès.")
+                except Exception as e:
+                    logger.error(f"⚠️ Échec installation modules {missing_modules}: {e}")
+                    continue
+            else:
+                # ─── CACHE NORMAL : Vérifier si package.json a changé ───
+                current_hash = self._compute_package_hash(pkg_path)
+                cached_hash = self._get_cached_hash(target_dir)
+                
+                if current_hash == cached_hash and (target_dir / "node_modules").exists():
+                    logger.info(f"⚡ CACHE HIT pour {target_dir.name or 'racine'} (hash identique). Skip npm install.")
+                    continue
+                
+                logger.info(f"⏳ npm install dans {target_dir.name or 'racine'}...")
+                try:
+                    subprocess.run(["npm", "install"], cwd=str(target_dir), shell=True, capture_output=True, timeout=180)
+                    # Sauvegarder le hash après une installation réussie
+                    self._save_package_hash(pkg_path, current_hash)
             except Exception as e:
                 logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
                 # Ne pas sauvegarder le hash si l'installation a échoué
@@ -1044,6 +1067,111 @@ class SpecGraphManager:
             "terminal_diagnostics": "\n".join(reports),
             "missing_modules": list(set(missing_modules))
         }
+    
+    def dependency_resolver_node(self, state: AgentState) -> dict:
+        """Nœud : Détection proactive des dépendances manquantes via analyse d'imports.
+        
+        Scanne les fichiers source pour détecter les imports (import/require statements)
+        et compare avec package.json pour identifier les dépendances manquantes.
+        Cela prévient les erreurs TypeScript "Cannot find module" avant compilation.
+        """
+        import os, json, re
+        from pathlib import Path
+        
+        logger.info("🔎 Analyse proactive des dépendances (Dependency Resolver)...")
+        
+        target_module = state.get("target_module")
+        if target_module:
+            search_dirs = [self.root / target_module]
+            logger.info(f"📍 Resolver limité au module : {target_module}")
+        else:
+            search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+        
+        detected_missing = []
+        
+        for module_dir in search_dirs:
+            src_dir = module_dir / "src"
+            if not src_dir.exists():
+                continue
+            
+            pkg_path = module_dir / "package.json"
+            if not pkg_path.exists():
+                continue
+            
+            # Lire les dépendances du package.json
+            try:
+                pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+                installed = set()
+                installed.update(pkg_data.get("dependencies", {}).keys())
+                installed.update(pkg_data.get("devDependencies", {}).keys())
+            except Exception:
+                installed = set()
+            
+            # Parser tous les fichiers TypeScript/JavaScript pour les imports
+            imports_found = set()
+            
+            for root_dir, dirs, files in os.walk(str(src_dir)):
+                dirs[:] = [d for d in dirs if d not in {'node_modules', 'dist', '.git', '__pycache__'}]
+                
+                for file in files:
+                    if not file.endswith(('.ts', '.tsx', '.js', '.jsx')):
+                        continue
+                    
+                    filepath = Path(root_dir) / file
+                    
+                    try:
+                        content = filepath.read_text(encoding="utf-8")
+                        
+                        # Regex 1: import { x } from 'module' ou "module"
+                        regex_imports = r"import\s+(?:{[^}]+}|[^,]+)\s+from\s+['\"]([^'\"]+)['\"]"
+                        matches = re.findall(regex_imports, content)
+                        imports_found.update(matches)
+                        
+                        # Regex 2: require('module') ou require("module")
+                        regex_require = r"require\s*\(\s*['\"]([^'\"]+)['\"]\s*\)"
+                        matches = re.findall(regex_require, content)
+                        imports_found.update(matches)
+                        
+                        # Regex 3: import 'module' (side effects)
+                        regex_side_effects = r"import\s+['\"]([^'\"]+)['\"]"
+                        matches = re.findall(regex_side_effects, content)
+                        imports_found.update(matches)
+                    
+                    except Exception:
+                        pass
+            
+            # Filtrer les imports de fichiers relatifs et identifier les modules manquants
+            for imp in imports_found:
+                # Ignorer les imports relatifs
+                if imp.startswith('.') or imp.startswith('/'):
+                    continue
+                
+                # Extraire le nom du package principal (ex: "lodash" de "lodash/get")
+                if '/' in imp and not imp.startswith('@'):
+                    pkg_name = imp.split('/')[0]
+                elif imp.startswith('@'):
+                    # Scoped package: @org/package ou @org/package/sub
+                    parts = imp.split('/')
+                    pkg_name = f"{parts[0]}/{parts[1]}"
+                else:
+                    pkg_name = imp
+                
+                # Vérifier si le package est installé
+                if pkg_name not in installed:
+                    logger.warning(f"⚠️ Module manquant détecté (via import): {pkg_name} (source: {imp})")
+                    detected_missing.append(pkg_name)
+        
+        # Fusionner avec les modules manquants détectés par diagnostic_node
+        all_missing = list(set(detected_missing + state.get("missing_modules", [])))
+        
+        if all_missing:
+            logger.info(f"🎯 Modules à installer: {all_missing}")
+        else:
+            logger.info("✅ Aucun module manquant détecté.")
+        
+        return {
+            "missing_modules": all_missing
+        }
 
     def route_after_impl(self, state: AgentState) -> str:
         if state["validation_status"] == "REJETÉ":
@@ -1095,6 +1223,7 @@ class SpecGraphManager:
         self.graph_builder.add_node("GraphicDesign_node", self.GraphicDesign_node)
         self.graph_builder.add_node("impl_node", self.impl_node)
         self.graph_builder.add_node("persist_node", self.persist_node)
+        self.graph_builder.add_node("dependency_resolver_node", self.dependency_resolver_node)
         self.graph_builder.add_node("install_deps_node", self.install_deps_node)
         self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
         self.graph_builder.add_node("buildfix_node", self.buildfix_node)
@@ -1108,7 +1237,8 @@ class SpecGraphManager:
         
         self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "persist_node": "persist_node", "verify_node": "verify_node"})
         
-        self.graph_builder.add_edge("persist_node", "install_deps_node")
+        self.graph_builder.add_edge("persist_node", "dependency_resolver_node")
+        self.graph_builder.add_edge("dependency_resolver_node", "install_deps_node")
         self.graph_builder.add_edge("install_deps_node", "diagnostic_node")
         
         # diagnostic → task_enforcer → route (buildfix, verify, impl, install_deps)
@@ -1120,8 +1250,8 @@ class SpecGraphManager:
             "install_deps_node": "install_deps_node"
         })
         
-        # buildfix → install_deps (re-run npm install après correction)
-        self.graph_builder.add_edge("buildfix_node", "install_deps_node")
+        # buildfix → dependency_resolver (re-run dependency detection after fix)
+        self.graph_builder.add_edge("buildfix_node", "dependency_resolver_node")
         
         self.graph_builder.add_conditional_edges("verify_node", self.route_after_verify, {END: END, "impl_node": "impl_node"})
 

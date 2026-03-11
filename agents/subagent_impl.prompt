@@ -295,6 +295,20 @@ Règle 13 : STACK TECHNIQUE (STRICT)
 
 Tu n'as aucune "liberté de confort". Tu ne dois installer que ce qui est explicitement listé dans la Constitution ou requis par une erreur de build critique pour une lib déjà autorisée (ex: @types).
 
+# RÈGLE 14 : EXACTITUDE DES CHEMINS DE FICHIERS (CRITIQUE)
+
+📌 **RÈGLE ABSOLUE** : Si un fichier est énuméré dans la CHECKLIST OBLIGATOIRE, tu DOIS :
+1. Créer le fichier avec le **CHEMIN EXACT** comme énoncé
+2. Créer le fichier avec le **NOM EXACT** du fichier (ex: `auth.ts`, pas `authMiddleware.ts`, pas `authentication.ts`)
+3. Vérifier que le chemin ET le nom correspondent EXACTEMENT avant de soumettre
+
+**EXEMPLES** :
+- Checklist dit: `backend/src/middlewares/auth.ts` → Tu crées: `backend/src/middlewares/auth.ts` (PAS `authMiddleware.ts`)
+- Checklist dit: `backend/src/controllers/authController.ts` → Tu crées: `backend/src/controllers/authController.ts` (EXACTEMENT)
+- Checklist dit: `backend/src/routes/authRoutes.ts` → Tu crées: `backend/src/routes/authRoutes.ts` (PAS `authRoute.ts`)
+
+**SANCTION** : Si un fichier manque ou a le mauvais nom/chemin, la tâche est marquée comme ÉCHOUÉE par l'audit (TaskEnforcer).
+
 # PHASE OBLIGATOIRE : VALIDATION AVANT SORTIE
 
 1.  **Arborescence** : Vérifie {file_tree}. Ne crée pas de fichiers en dehors de `backend/` ou `frontend/`.

@@ -212,6 +212,32 @@ Qu'est-ce qui se passe si votre **frontend dépend du backend** (cas monorepo cl
 
 **Résultat**: Ordre des dépendances respecté + roadmap toujours à jour.
 
+### 🔎 Détection Proactive des Imports Manquants (Dependency Resolver)
+
+**Nouveau:** Speckit.Factory intègre un **nœud `dependency_resolver`** qui scanne vos fichiers source AVANT la compilation TypeScript.
+
+**Ce qu'il fait :**
+1. **Parse tous les imports** (`import { x } from 'zod'`, `require('express')`, etc.)
+2. **Vérifie** si les modules sont dans `package.json`
+3. **Détecte les manquants** avant que TypeScript ne plante
+4. **Installe directement** via `npm install zod` (sans bloquer sur le cache)
+
+**Avantage :**
+- ✅ Zéro erreur `"Cannot find module 'zod'"` (détecté + installé proactivement)
+- ✅ Pas de boucles infinies sur dépendances manquantes
+- ✅ Build réussit dès le premier essai
+
+**Pipeline optimisé :**
+```
+Analysis → Design → Implementation → Persist
+  ↓
+Dependency Resolver (détecte zod, express, etc.)
+  ↓
+npm install (modules détectés + modules TSC manquants)
+  ↓
+Diagnostics (build réussit → no more errors)
+```
+
 ---
 
 ## 🛠️ Travailler sur un Projet Existant (Mode Composante)
