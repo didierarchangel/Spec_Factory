@@ -5,6 +5,7 @@
 import logging
 from pathlib import Path
 from typing import TypedDict, List
+from itertools import chain
 from langgraph.graph import StateGraph, START, END
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -845,7 +846,7 @@ class SpecGraphManager:
                 continue
             
             imported_packages = set()
-            for ts_file in src_dir.rglob("*.ts") | src_dir.rglob("*.tsx"):
+            for ts_file in chain(src_dir.rglob("*.ts"), src_dir.rglob("*.tsx")):
                 try:
                     content = ts_file.read_text(encoding="utf-8")
                     # Regex pour extraire imports: import X from 'package-name'
