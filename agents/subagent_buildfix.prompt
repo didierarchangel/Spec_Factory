@@ -164,12 +164,64 @@ Si le project est Next.js (vérifier `next.config.ts` ou `next.config.js`) :
    - Vérifier `"paths": {{ "@/*": ["./src/*"] }}` si des alias @ sont utilisés
 9. **next/link et next/image** : Ces composants Next.js DOIVENT être importés depuis 'next/link' ou 'next/image', pas de fallback HTML standard
 
+# CAS PARTICULIER VUE + VITE (ERREURS FRÉQUENTES EN FRONTEND)
+Si le projet est Vue (vérifier `vite.config.ts` et script `vue` dans package.json) :
+
+## 1. Component Resolution Errors
+**Problème**: `Failed to resolve component` ou `Component not registered`
+- Assurer que les components sont exportés : `export default { ... }` ou `<script setup>`
+- Importer correctement sans extension : `import Home from './pages/Home'` pas `'./pages/Home.vue'`
+- Vérifier que tous les composants utilisés sont importés
+
+## 2. Property Type Errors
+**Problème**: `Property does not exist on type` ou `Property is missing from type`
+- Utiliser `defineProps` avec typage : `const props = defineProps<{ title: string }>()`
+- Ou: `const props = withDefaults(defineProps<Props>(), { title: 'Default' })`
+- Vérifier les types dans `<script setup lang="ts">`
+
+## 3. Path Alias Issues
+**Problème**: `Cannot find module '@/components'`
+- Vérifier vite.config.ts contient : `resolve: { alias: { '@': resolve(__dirname, './src') } }`
+- Ou utiliser chemins relatifs : `import Button from '../components/Button'`
+- **Recommandé**: Utiliser l'alias @/ si configuré
+
+## 4. v-model Binding
+**Problème**: `v-model` not working ou binding error
+- Parent: `<Input v-model="name" />`
+- Component: Doit exposer `modelValue` prop et `update:modelValue` event
+- Vue 3: `defineProps({ modelValue: String })` et `emit('update:modelValue', newValue)`
+- Vérifier qu'il y a émission: `emit('update:modelValue', binding.value)`
+
+## 5. Missing Component Export
+**Problème**: `Failed to export component` ou component undefined
+- Chaque `.vue` DOIT exporter default : `export default { name: 'MyComponent', ... }`
+- Avec `<script setup>`: Pas besoin explicit export, auto-exporté
+- Vérifier la fermeture de tous les tags
+
+## 6. TypeScript in Templates
+**Problème**: `Property undefined in template` despite being in component
+- Utiliser `<script setup lang="ts">` pour full TypeScript support
+- Typer explicitement : `const count = ref<number>(0)`
+- Imports: `import { ref } from 'vue'`
+
+## vite.config & tsconfig Setup (Vue)
+- **vite.config.ts** doit avoir :
+  ```javascript
+  import vue from '@vitejs/plugin-vue'
+  export default {{ plugins: [vue()], server: {{ port: 3000 }} }}
+  ```
+- **tsconfig.json** pour Vue+Vite :
+  ```json
+  {{ "compilerOptions": {{ "jsx": "preserve", "lib": ["ES2020", "DOM"] }} }}
+  ```
+
 # CAS CRITIQUE : DÉTERMINER LE FRAMEWORK
 Avant de corriger, identifie le framework :
 - Si {file_tree} contient `next.config.*` → NEXT.JS
-- Si {file_tree} contient `vite.config.*` → VITE/REACT
-- Si {file_tree} contient `app/page.tsx` ou `pages/index.tsx` → NEXT.JS
-- Si {file_tree} contient `src/App.tsx` → VITE/REACT
+- Si {file_tree} contient `vite.config.*` ET fichiers `.vue` → VUE
+- Si {file_tree} contient `vite.config.*` ET fichiers `.tsx` → REACT
+- Si {file_tree} contient `src/App.vue` → VUE + VITE
+- Si {file_tree} contient `src/App.tsx` → REACT + VITE
 
 # RÉPARATION STRUCTURELLE (FEEDBACK TASK ENFORCER)
 Si {feedback_correction} contient "MANQUANT:", tu dois :

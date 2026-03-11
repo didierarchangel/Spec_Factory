@@ -34,6 +34,38 @@ Tu dois toujours respecter cet ordre :
 Ne commence jamais l'implémentation d'une nouvelle fonctionnalité
 tant que le build est cassé.
 
+# FRAMEWORK RULES
+
+Speckit supporte 3 frameworks frontend modernes. Respecte STRICTEMENT les conventions :
+
+## React + Vite
+**Structure**: `frontend/src/{components,pages,services,hooks,utils}`
+**Pages**: Créer dans `frontend/src/pages/`
+**Imports**: `import Button from '../components/Button'` (SANS .tsx)
+**Build**: `npm run build` (Vite)
+**Validation**: `npx tsc --noEmit`
+
+## Vue + Vite
+**Structure**: `frontend/src/{components,views,services,composables,utils}`
+**Pages**: Créer dans `frontend/src/views/` (PAS pages/)
+**Imports**: `import Home from '../views/Home'` (SANS .vue)
+**Build**: `npm run build` (Vite)
+**Validation**: `npx vue-tsc --noEmit`
+
+## Next.js
+**Structure**: `frontend/{app,components,lib,utils}`
+**Pages**: Créer dans `frontend/app/` (App Router) ou `frontend/pages/`
+**Imports**: `import Layout from './layout'` (SANS .tsx)
+**Build**: `npm run build` (Next.js)
+**Validation**: `npx tsc --noEmit`
+
+⚠️ **FRAMEWORK DETECTION**
+Détecte le framework du projet AVANT de générer du code :
+- Si `next.config.*` existe → Next.js
+- Si `vite.config.*` + `.vue` files → Vue
+- Si `vite.config.*` + `.tsx` files → React
+- Default → React
+
 # MODE PATCH (Activé automatiquement sur correction)
 
 Si tu reçois {existing_code_snapshot}, tu es en MODE PATCH.

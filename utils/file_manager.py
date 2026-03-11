@@ -12,67 +12,47 @@ logger = logging.getLogger(__name__)
 class FileManager:
     """Gestionnaire de fichiers sécurisé pour Speckit.Factory"""
     
-    # Framework Mapping Table - Extensible system for multiple frameworks
-    # Format: framework_name -> {module_patterns, directory_mappings, file_extensions}
+    # Central Framework Mapping Table - Only 3 frameworks: React, Next.js, Vue
+    # Organized with consistent directory naming and build configurations
     FRAMEWORK_MAP = {
-        "react_vite": {
-            "modules": ["frontend"],
-            "src_location": "frontend/src",
-            "component_dirs": ["components", "pages", "hooks", "services", "utils"],
+        "react": {
+            "name": "React + Vite",
+            "module": "frontend",
+            "src": "frontend/src",
+            "pages_dir": "pages",
+            "components_dir": "components",
+            "structure": "frontend/src/{components,pages,services,hooks,utils}",
             "extensions": [".tsx", ".ts", ".jsx", ".js", ".css"],
             "config_files": ["vite.config.ts", "tsconfig.json"],
             "build_command": "npm run build",
             "validation_command": "npx tsc --noEmit",
-            "patterns": {
-                "component": r"(Component|Page|Hook)\.tsx?$",
-                "page": r"(Page|Screen)\.tsx?$",
-                "service": r"(Service|API|api)\.ts$"
-            }
+            "features": ["components", "pages", "hooks", "services"]
         },
-        "nextjs": {
-            "modules": ["frontend"],
-            "src_location": "frontend",
-            "app_dir": "frontend/app",
-            "pages_dir": "frontend/pages",
-            "component_dirs": ["app", "components", "pages", "lib", "utils"],
+        "next": {
+            "name": "Next.js",
+            "module": "frontend",
+            "src": "frontend",
+            "pages_dir": "app",
+            "components_dir": "components",
+            "structure": "frontend/{app,components,lib,utils}",
             "extensions": [".tsx", ".ts", ".jsx", ".js", ".css"],
-            "config_files": ["next.config.ts", "tsconfig.json"],
+            "config_files": ["next.config.ts", "next.config.js", "tsconfig.json"],
             "build_command": "npm run build",
             "validation_command": "npx tsc --noEmit",
-            "patterns": {
-                "page": r"page\.tsx?$",
-                "layout": r"layout\.tsx?$",
-                "component": r"\.tsx?$"
-            }
+            "features": ["app-router", "api-routes", "server-components"]
         },
-        "vuejs": {
-            "modules": ["frontend"],
-            "src_location": "frontend/src",
-            "component_dirs": ["components", "pages", "composables", "services", "utils"],
+        "vue": {
+            "name": "Vue + Vite",
+            "module": "frontend",
+            "src": "frontend/src",
+            "pages_dir": "views",
+            "components_dir": "components",
+            "structure": "frontend/src/{components,views,services,composables,utils}",
             "extensions": [".vue", ".ts", ".js", ".css"],
             "config_files": ["vite.config.ts", "tsconfig.json"],
             "build_command": "npm run build",
             "validation_command": "npx vue-tsc --noEmit",
-            "patterns": {
-                "component": r"\.vue$",
-                "page": r"(Page|View)\.vue$",
-                "service": r"(Service)\.ts$"
-            }
-        },
-        "django": {
-            "modules": ["backend"],
-            "src_location": "backend",
-            "app_dirs": ["backend/apps"],
-            "component_dirs": ["models", "views", "serializers", "forms", "utils"],
-            "extensions": [".py", ".html"],
-            "config_files": ["settings.py", "manage.py"],
-            "build_command": "python manage.py check",
-            "validation_command": "python -m py_compile",
-            "patterns": {
-                "model": r"models\.py$",
-                "view": r"views\.py$",
-                "serializer": r"serializers\.py$"
-            }
+            "features": ["components", "views", "composables", "services"]
         }
     }
 
@@ -91,42 +71,50 @@ class FileManager:
     def detect_framework(self) -> str:
         """Détecte automatiquement le framework du projet.
         
-        Heuristique:
-        1. Check if next.config.* exists → Next.js
-        2. Check if vite.config.* exists → React/Vite or Vue
-        3. Check if app/ and page.tsx exists → Next.js
-        4. Check if src/ and vite.config exists → React/Vite
-        5. Default → React/Vite
+        Returns: "react", "next", or "vue"
         """
         if self._detected_framework:
             return self._detected_framework
         
-        # Check for Next.js
+        # Step 1: Check for Next.js
         if (self.base_path / "next.config.ts").exists() or (self.base_path / "next.config.js").exists():
-            self._detected_framework = "nextjs"
+            self._detected_framework = "next"
             logger.info("🔍 Framework detected: Next.js")
             return self._detected_framework
         
-        # Check for Vue setup
-        if (self.base_path / "frontend" / "src" / "App.vue").exists():
-            self._detected_framework = "vuejs"
-            logger.info("🔍 Framework detected: Vue.js")
-            return self._detected_framework
+        # Step 2: Check for Vite (React or Vue)
+        vite_config = (self.base_path / "vite.config.ts").exists() or (self.base_path / "frontend" / "vite.config.ts").exists()
+        if vite_config:
+            # Differentiate React vs Vue by checking package.json
+            pkg_path = self.base_path / "package.json"
+            if not pkg_path.exists():
+                pkg_path = self.base_path / "frontend" / "package.json"
+            
+            if pkg_path.exists():
+                try:
+                    import json
+                    data = json.loads(pkg_path.read_text())
+                    
+                    if "vue" in str(data):
+                        self._detected_framework = "vue"
+                        logger.info("🔍 Framework detected: Vue + Vite")
+                        return self._detected_framework
+                    
+                    if "react" in str(data):
+                        self._detected_framework = "react"
+                        logger.info("🔍 Framework detected: React + Vite")
+                        return self._detected_framework
+                except Exception as e:
+                    logger.debug(f"Could not parse package.json: {e}")
+            
+            # Fallback: check for Vue component file
+            if (self.base_path / "frontend" / "src" / "App.vue").exists():
+                self._detected_framework = "vue"
+                logger.info("🔍 Framework detected: Vue + Vite (App.vue)")
+                return self._detected_framework
         
-        # Check for Django
-        if (self.base_path / "manage.py").exists() or (self.base_path / "backend" / "manage.py").exists():
-            self._detected_framework = "django"
-            logger.info("🔍 Framework detected: Django")
-            return self._detected_framework
-        
-        # Default to React/Vite if vite.config exists
-        if (self.base_path / "vite.config.ts").exists() or (self.base_path / "frontend" / "vite.config.ts").exists():
-            self._detected_framework = "react_vite"
-            logger.info("🔍 Framework detected: React + Vite")
-            return self._detected_framework
-        
-        # Default fallback
-        self._detected_framework = "react_vite"
+        # Default: React + Vite
+        self._detected_framework = "react"
         logger.debug("🔍 Framework not detected, defaulting to React + Vite")
         return self._detected_framework
     
@@ -138,20 +126,13 @@ class FileManager:
         if framework in self.FRAMEWORK_MAP:
             return self.FRAMEWORK_MAP[framework]
         else:
-            logger.warning(f"⚠️ Unknown framework: {framework}, returning React/Vite default")
-            return self.FRAMEWORK_MAP["react_vite"]
+            logger.warning(f"⚠️ Unknown framework: {framework}, returning React default")
+            return self.FRAMEWORK_MAP["react"]
     
     def normalize_path_for_framework(self, file_path_str: str, framework: str = None) -> str:
         """Normalise le chemin en respectant les conventions du framework détecté."""
         framework = framework or self.detect_framework()
-        config = self.get_framework_config(framework)
-        
-        # Utiliser le module approprié du framework
-        modules = config.get("modules", ["frontend"])
-        target_module = modules[0] if modules else "frontend"
-        
-        # Normaliser le chemin
-        return self.normalize_path(file_path_str, target_module)
+        return self.normalize_path(file_path_str, framework)
 
     def _compute_file_hash(self, file_path: Path) -> str:
         """Calcule le hash SHA256 d'un fichier pour le diff tracking."""
@@ -264,105 +245,87 @@ class FileManager:
         except ValueError:
             return False
 
-    def normalize_path(self, file_path_str: str, target_module: str = None) -> str:
-        """Normalise les chemins de fichiers générés par l'IA pour garantir le préfixe du module.
+    def normalize_path(self, path: str, framework: str = None) -> str:
+        """Normalise les chemins selon le framework (react, next, vue).
         
-        Stratégie de correction (en cascade):
-        1. Si le chemin est déjà complet (ex: backend/src/..., frontend/src/...) → retourner tel quel
-        2. Si le chemin commence par "src/" ou "components/" → ajouter le préfixe du module
-        3. Si c'est un fichier seul sans répertoire → chercher dans les répertoires standards
-        4. Sécurité : Rejette les chemins non sûrs (..)
+        Stratégie:
+        1. Si déjà complet (frontend/..., backend/...) → retourner tel quel
+        2. Ajouter src/ si nécessaire (React, Vue)
+        3. Utiliser pages/ pour React, views/ pour Vue, app/ pour Next
+        4. Ajouter module prefix (frontend/)
         
         Args:
-            file_path_str: Chemin du fichier (peut être relatif)
-            target_module: Module cible ('backend' ou 'frontend') - détecté automatiquement sinon
-            
+            path: Chemin du fichier (ex: "components/Button.tsx")
+            framework: Framework cible. Si None, détecte automatiquement.
+        
         Returns:
-            Chemin normalisé (ex: frontend/src/components/RegisterForm.tsx)
-            
-        Raises:
-            ValueError: Si chemin non sûr détecté
+            Chemin normalisé (ex: "frontend/src/components/Button.tsx")
         """
         import re
         
         # Nettoyer le chemin
-        path = file_path_str.strip().replace('\\', '/')
+        path = path.strip().replace('\\', '/')
         
-        # SÉCURITÉ : Rejeter les chemins non sûrs (directory traversal)
+        # SÉCURITÉ : Rejeter les chemins non sûrs
         if ".." in path or path.startswith('/') or ':' in path:
-            raise ValueError(f"🛑 UNSAFE PATH DETECTED: {file_path_str} (contains .. or absolute path)")
+            raise ValueError(f"🛑 UNSAFE PATH DETECTED: {path} (contains .. or absolute path)")
         
-        # Niveau 1 : Déjà un chemin complet avec module ?
-        if path.startswith('backend/') or path.startswith('frontend/') or path.startswith('mobile/'):
-            logger.debug(f"✅ Path already has module prefix: {path}")
+        # Si déjà complet, retourner
+        if path.startswith(('frontend/', 'backend/')):
+            logger.debug(f"✅ Path already complete: {path}")
             return path
         
-        # Déterminer le module cible si non fourni
-        if not target_module:
-            # Heuristique : Chercher des indices dans le nom de fichier
-            if 'component' in path.lower() or 'page' in path.lower() or 'hook' in path.lower():
-                target_module = 'frontend'
-            elif 'middleware' in path.lower() or 'controller' in path.lower() or 'model' in path.lower() or 'route' in path.lower():
-                target_module = 'backend'
-            else:
-                target_module = 'frontend'  # Défaut
-            logger.debug(f"🎯 Detected module: {target_module} for {path}")
+        # Détecter framework si nécessaire
+        framework = framework or self.detect_framework()
+        config = self.get_framework_config(framework)
         
-        # Niveau 2 : Commence par "src/" ou un dossier standard ?
-        if path.startswith('src/'):
-            result = f"{target_module}/{path}"
-            logger.debug(f"📁 Level 2 match (src/): {path} → {result}")
-            return result
-        
-        # Niveau 3 : Commence par un dossier standard (components/, services/, etc.) ?
-        standard_dirs = ['components', 'hooks', 'pages', 'services', 'routes', 'controllers', 'models', 'middlewares']
-        for dir_name in standard_dirs:
-            if path.startswith(f"{dir_name}/"):
-                result = f"{target_module}/src/{path}"
-                logger.debug(f"📁 Level 3 match ({dir_name}/): {path} → {result}")
+        # Niveau 1: Commence par "src/" (React, Vue)
+        if framework in ("react", "vue"):
+            if path.startswith('src/'):
+                result = f"frontend/{path}"
+                logger.debug(f"📁 Matched src/: {path} → {result}")
                 return result
         
-        # Niveau 4 : C'est juste un nom de fichier ?
-        # Chercher le meilleur endroit pour le mettre
-        filename = path.split('/')[-1]
+        # Niveau 2: Commence par un répertoire standard
+        # Pour React/Vue: components, services, hooks, utils (tous vont dans src/)
+        # Pour Next: components, lib, utils (pas de src/)
         
-        if 'component' in filename.lower():
-            result = f"{target_module}/src/components/{path}"
-            logger.debug(f"📝 Level 4 match (component): {path} → {result}")
+        if framework in ("react", "vue"):
+            src_base = "frontend/src"
+            standard_dirs = ["components", "services", "hooks", "utils", "composables"]  # composables for Vue
+        else:  # next
+            src_base = "frontend"
+            standard_dirs = ["components", "lib", "utils", "api", "app"]
+        
+        for dir_name in standard_dirs:
+            if path.startswith(f"{dir_name}/"):
+                result = f"{src_base}/{path}"
+                logger.debug(f"📁 Matched {dir_name}/: {path} → {result}")
+                return result
+        
+        # Niveau 3: Filename sans répertoire → classifier
+        filename = path.split('/')[-1]
+        has_path = '/' in path
+        
+        # Pour React et Vue: pages → pages ou views
+        if "page" in filename.lower() or "view" in filename.lower():
+            if framework == "vue":
+                result = f"frontend/src/views/{path}"
+            elif framework == "next":
+                result = f"frontend/app/{path}"
+            else:  # react
+                result = f"frontend/src/pages/{path}"
+            logger.debug(f"📝 Matched page/view: {path} → {result}")
             return result
-        elif 'page' in filename.lower():
-            result = f"{target_module}/src/pages/{path}"
-            logger.debug(f"📝 Level 4 match (page): {path} → {result}")
-            return result
-        elif 'hook' in filename.lower():
-            result = f"{target_module}/src/hooks/{path}"
-            logger.debug(f"📝 Level 4 match (hook): {path} → {result}")
-            return result
-        elif 'service' in filename.lower() or 'api' in filename.lower():
-            result = f"{target_module}/src/services/{path}"
-            logger.debug(f"📝 Level 4 match (service): {path} → {result}")
-            return result
-        elif 'controller' in filename.lower():
-            result = f"backend/src/controllers/{path}"
-            logger.debug(f"📝 Level 4 match (controller): {path} → {result}")
-            return result
-        elif 'model' in filename.lower():
-            result = f"backend/src/models/{path}"
-            logger.debug(f"📝 Level 4 match (model): {path} → {result}")
-            return result
-        elif 'middleware' in filename.lower():
-            result = f"backend/src/middlewares/{path}"
-            logger.debug(f"📝 Level 4 match (middleware): {path} → {result}")
-            return result
-        elif 'route' in filename.lower():
-            result = f"backend/src/routes/{path}"
-            logger.debug(f"📝 Level 4 match (route): {path} → {result}")
-            return result
-        else:
-            # Défaut : mettre dans src directement
-            result = f"{target_module}/src/{path}"
-            logger.debug(f"📝 Level 4 default: {path} → {result}")
-            return result
+        
+        # Default pour React/Vue:  components
+        if framework in ("react", "vue"):
+            result = f"frontend/src/components/{path}"
+        else:  # next
+            result = f"frontend/components/{path}"
+        
+        logger.debug(f"📝 Default: {path} → {result}")
+        return result
 
     def safe_read(self, relative_path: str) -> Optional[str]:
         """Lit un fichier de manière sécurisée en vérifiant son existence et l'encodage utf-8."""

@@ -137,27 +137,34 @@ class SpecGraphManager:
         return None
 
     def _get_build_tool(self, target_module: str) -> str:
-        """Détecte le bon outil de build selon le module.
+        """Détecte le bon outil de build selon le module et framework.
         
-        - backend → TypeScript (tsc)
-        - frontend → Next.js, Vite, ou TypeScript
-        - mobile → TypeScript ou autre
+        Returns: "next", "vite", or "tsc"
         """
         if target_module == "frontend":
-            # Vérifier si next.config.ts/js existe (Next.js)
+            # Check for Next.js first
             if ((self.root / "frontend" / "next.config.ts").exists() or 
-                (self.root / "frontend" / "next.config.js").exists() or
-                (self.root / "frontend" / "next.config.mjs").exists()):
+                (self.root / "frontend" / "next.config.js").exists()):
                 return "next"
             
-            # Vérifier si vite.config.ts existe (Vite)
+            # Check for Vite (React or Vue)
             if (self.root / "frontend" / "vite.config.ts").exists():
                 return "vite"
             
-            # Fallback à TypeScript
+            # Fallback
             return "tsc"
         
-        # Par défaut, utiliser TypeScript
+        # Default: TypeScript
+        return "tsc"
+    
+    def _detect_frontend_framework(self) -> str:
+        """Détecte le framework frontend: 'react', 'vue', ou 'next'.
+        
+        Utilise la FileManager pour cohérence.
+        """
+        from utils.file_manager import FileManager
+        fm = FileManager(str(self.root))
+        return fm.detect_framework()
         return "tsc"
 
     def _get_nextjs_router_type(self) -> str:
