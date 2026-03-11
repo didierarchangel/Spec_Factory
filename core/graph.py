@@ -900,7 +900,7 @@ class SpecGraphManager:
                 "state": state
             }
                 # 🛡️ Filter missing_modules: only keep those not installed
-                import subprocess
+            import subprocess
                 import json
                 missing = state.get("missing_modules", [])
                 filtered_missing = []
