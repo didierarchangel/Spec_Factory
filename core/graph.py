@@ -843,23 +843,18 @@ class SpecGraphManager:
             fixed_issues = []
             target_module = state.get("target_module")
             search_dirs = [self.root / target_module] if target_module else [self.root, self.root / "backend", self.root / "frontend"]
-            
             import subprocess, json, re
             from pathlib import Path
             from itertools import chain
-            
             for target_dir in search_dirs:
                 try:
                     pkg_path = target_dir / "package.json"
                     if not pkg_path.exists():
                         continue
-                    
                     pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
                     src_dir = target_dir / "src"
                     if not src_dir.exists():
                         continue
-                    
-                    # Extract imported packages
                     imported_packages = set()
                     for ts_file in chain(src_dir.rglob("*.ts"), src_dir.rglob("*.tsx")):
                         try:
@@ -867,17 +862,12 @@ class SpecGraphManager:
                             for match in re.findall(r"from\s+['\"]([^'\"]+)['\"]", content):
                                 if not match.startswith(".") and not match.startswith("/"):
                                     pkg_name = match.split("/")[0]
-                                    if pkg_name.startswith("@"):
-                                        pkg_name = "/".join(match.split("/")[:2])
+                                    if pkg_name.startswith("@"): pkg_name = "/".join(match.split("/")[:2])
                                     imported_packages.add(pkg_name)
                         except Exception:
                             pass
-                    
-                    # Compare with package.json
                     declared_deps = set(pkg_data.get("dependencies", {}).keys()) | set(pkg_data.get("devDependencies", {}).keys())
                     missing_from_json = imported_packages - declared_deps - {"react", "react-dom", "express"}
-                    
-                    # Add missing packages
                     for pkg in missing_from_json:
                         is_dev = any(pkg.startswith(prefix) for prefix in ["@types/", "ts-", "jest", "vitest", "supertest"])
                         section = "devDependencies" if is_dev else "dependencies"
@@ -885,29 +875,30 @@ class SpecGraphManager:
                             pkg_data[section] = {}
                         pkg_data[section][pkg] = "latest"
                         fixed_issues.append(f"Added {pkg} to {section}")
-                    
-                    # Write changes
                     if fixed_issues:
                         pkg_path.write_text(json.dumps(pkg_data, indent=2) + "\n", encoding="utf-8")
                         hash_file = target_dir / ".speckit_hash"
-                        if hash_file.exists():
-                            hash_file.unlink()
-                
+                        if hash_file.exists(): hash_file.unlink()
                 except Exception as e:
                     logger.warning(f"⚠️ Error in {target_dir}: {e}")
-            
-            # ALWAYS return dict - even on error
+            # 🛡️ Always clear missing_modules and add anti-loop protection
+            state["missing_modules"] = []
+            state["dep_attempts"] = state.get("dep_attempts", 0) + 1
+            if state["dep_attempts"] > 3:
+                logger.warning("Dependency install loop detected — skipping")
+                state["missing_modules"] = []
             return {
                 "dependency_issues_fixed": len(fixed_issues),
-                "dependency_fixes": fixed_issues
+                "dependency_fixes": fixed_issues,
+                "state": state
             }
-        
         except Exception as e:
             logger.error(f"❌ validate_dependency_node error: {e}")
-            # FALLBACK: Must never return None
+            state["missing_modules"] = []
             return {
                 "dependency_issues_fixed": 0,
-                "dependency_fixes": []
+                "dependency_fixes": [],
+                "state": state
             }
 
     def install_deps_node(self, state: AgentState) -> dict:
