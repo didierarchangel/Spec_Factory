@@ -227,7 +227,7 @@ Si le projet est Vue (vérifier `vite.config.ts` et script `vue` dans package.js
 
 ## 3. Path Alias Issues
 **Problème**: `Cannot find module '@/components'`
-- Vérifier vite.config.ts contient : `resolve: { alias: { '@': resolve(__dirname, './src') } }`
+- Vérifier vite.config.ts contient : `resolve: {{ alias: {{ '@': resolve(__dirname, './src') }} }}`
 - Ou utiliser chemins relatifs : `import Button from '../components/Button'`
 - **Recommandé**: Utiliser l'alias @/ si configuré
 
@@ -248,7 +248,7 @@ Si le projet est Vue (vérifier `vite.config.ts` et script `vue` dans package.js
 **Problème**: `Property undefined in template` despite being in component
 - Utiliser `<script setup lang="ts">` pour full TypeScript support
 - Typer explicitement : `const count = ref<number>(0)`
-- Imports: `import { ref } from 'vue'`
+- Imports: `import {{ ref }} from 'vue'`
 
 ## vite.config & tsconfig Setup (Vue)
 - **vite.config.ts** doit avoir :
