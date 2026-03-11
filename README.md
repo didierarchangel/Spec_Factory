@@ -199,6 +199,19 @@ Grâce à cette approche modulaire, Speckit.Factory peut maintenant gérer des p
 
 Chaque module a sa Constitution, ses dépendances, et son cycle de vie propre, **complètement isolé**.
 
+### ⚙️ Gestion Intelligente des Dépendances Cross-Module
+
+Qu'est-ce qui se passe si votre **frontend dépend du backend** (cas monorepo classique)?
+
+**Speckit gère cette situation automatiquement** :
+
+- ✅ Continue l'installation du **module cible** (frontend/) normalement
+- 🔄 **Détecte** la dépendance manquante via `package.json`
+- 📌 **Ajoute automatiquement** une tâche à `Constitution/etapes.md` (étape backend)
+- 📣 **Informe l'utilisateur** du bon ordre à suivre
+
+**Résultat**: Ordre des dépendances respecté + roadmap toujours à jour.
+
 ---
 
 ## 🛠️ Travailler sur un Projet Existant (Mode Composante)

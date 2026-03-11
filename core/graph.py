@@ -150,6 +150,75 @@ class SpecGraphManager:
         # Par défaut, utiliser TypeScript
         return "tsc"
 
+    def _detect_cross_module_deps(self, target_module: str, pkg_path: Path) -> dict:
+        """Détecte les dépendances cross-module (ex: frontend dépend du backend).
+        
+        Retourne: {"missing_module": "backend", "reason": "imports de services/auth"}
+        """
+        import json
+        try:
+            data = json.loads(pkg_path.read_text(encoding="utf-8"))
+            all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+        except Exception:
+            return {}
+        
+        # Pattern des libs de cross-module
+        # Frontend qui importe des services backend
+        if target_module == "frontend":
+            # Chercher des indicateurs d'import backend
+            if any(lib in all_deps for lib in ["@backend/shared", "@backend/models", "@backend/services", "backend-api"]):
+                return {"missing_module": "backend", "reason": "Frontend dépend de services/modèles Backend"}
+        
+        # Backend qui importe du frontend (moins courant mais possible)
+        if target_module == "backend":
+            if any(lib in all_deps for lib in ["@frontend/shared", "@frontend/types", "frontend-types"]):
+                return {"missing_module": "frontend", "reason": "Backend dépend de types Frontend"}
+        
+        return {}
+
+    def _add_cross_module_task(self, target_module: str, missing_module: str, reason: str) -> None:
+        """Ajoute une tâche manquante à l'étape concernée dans etapes.md.
+        
+        Stratégie:
+        - Si on est en frontend et il manque du backend:
+          Décocher la subtâche backend et ajouter une tâche à l'étape backend
+        """
+        from core.etapes import EtapeManager
+        
+        etape_mgr = EtapeManager(self.root)
+        
+        # Déterminer l'étape concernée
+        step_map = {"backend": "02", "frontend": "03", "mobile": "04"}
+        step_num = step_map.get(missing_module, "02")
+        
+        try:
+            # Ajouter une nouvelle tâche non-cochée à l'étape concernée
+            msg = f"[Cross-Module] {reason} (détecté depuis {target_module})"
+            logger.warning(f"⚠️ Dépendance cross-module détectée: {msg}")
+            logger.info(f"💡 Ajoute une tâche à l'étape {step_num} : Installer {missing_module}")
+            
+            # Lire etapes.md
+            etapes_file = self.root / "Constitution" / "etapes.md"
+            if etapes_file.exists():
+                content = etapes_file.read_text(encoding="utf-8")
+                
+                # Injecter la tâche manquante dans l'étape concernée
+                import re
+                pattern = f"(## Étape {step_num}.*?)(?=## Étape|$)"
+                
+                def inject_task(match):
+                    section = match.group(1)
+                    # Ajouter la tâche avant la fin de la section
+                    task_line = f"\n- [ ] [Cross-Module] {reason}"
+                    return section + task_line
+                
+                new_content = re.sub(pattern, inject_task, content, flags=re.DOTALL)
+                etapes_file.write_text(new_content, encoding="utf-8")
+                logger.info(f"✅ Tâche ajoutée à etapes.md (Étape {step_num})")
+        except Exception as e:
+            logger.warning(f"⚠️ Impossible d'ajouter la tâche cross-module : {e}")
+
+
 
     def _load_prompt(self, filename: str) -> str:
         """Charge le contenu d'un fichier prompt."""
@@ -488,6 +557,23 @@ class SpecGraphManager:
                 logger.warning(f"⚠️ npm install a échoué dans {target_dir}: {e}")
                 # Ne pas sauvegarder le hash si l'installation a échoué
                 continue
+            
+            # ─── DÉTECTION DES DÉPENDANCES CROSS-MODULE ───
+            if target_module:
+                cross_deps = self._detect_cross_module_deps(target_module, pkg_path)
+                if cross_deps:
+                    missing_mod = cross_deps["missing_module"]
+                    reason = cross_deps["reason"]
+                    # Ajouter une tâche manquante à l'étape concernée
+                    self._add_cross_module_task(target_module, missing_mod, reason)
+                    # Message informatif à l'utilisateur
+                    logger.warning(f"\n{'='*60}")
+                    logger.warning(f"⚠️ DÉPENDANCE CROSS-MODULE DÉTECTÉE")
+                    logger.warning(f"{'='*60}")
+                    logger.warning(f"📍 Raison: {reason}")
+                    logger.warning(f"💡 Action: Une tâche a été ajoutée à l'étape {missing_mod}")
+                    logger.warning(f"🔄 Exécutez ensuite: speckit run --task <step>_{missing_mod}")
+                    logger.warning(f"{'='*60}\n")
             
             # ─── GARANTIR QUE TYPESCRIPT EST INSTALLÉ (CRÍTICA) ───
             # Si on a détecté typescript manquant, on le force en dev
