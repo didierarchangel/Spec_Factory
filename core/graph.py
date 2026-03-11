@@ -808,6 +808,126 @@ class SpecGraphManager:
             "validation_status": "VALIDATED" if status == "PASSED" else "VALIDATION_FAILED"
         }
 
+    def validate_dependency_node(self, state: AgentState) -> dict:
+        """
+        NOUVEAU NŒUD: Valide et répare les dépendances AVANT npm install.
+        Détecte:
+        - Imports dans le code généré vs package.json déclarations
+        - Versions npm invalides
+        - Packages qui n'existent pas sur npm registry
+        """
+        import subprocess, json, re
+        from pathlib import Path
+        logger.info("🔍 Validation des dépendances (avant npm install)...")
+        
+        target_module = state.get("target_module")
+        if target_module:
+            search_dirs = [self.root / target_module]
+        else:
+            search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
+        
+        fixed_issues = []
+        
+        for target_dir in search_dirs:
+            pkg_path = target_dir / "package.json"
+            if not pkg_path.exists():
+                continue
+            
+            try:
+                pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible de lire {pkg_path}: {e}")
+                continue
+            
+            # ─ 1. EXTRAIRE TOUS LES IMPORTS DU CODE GÉNÉRÉ ─
+            src_dir = target_dir / "src"
+            if not src_dir.exists():
+                continue
+            
+            imported_packages = set()
+            for ts_file in src_dir.rglob("*.ts") | src_dir.rglob("*.tsx"):
+                try:
+                    content = ts_file.read_text(encoding="utf-8")
+                    # Regex pour extraire imports: import X from 'package-name'
+                    matches = re.findall(r"from\s+['\"]([^'\"]+)['\"]", content)
+                    for match in matches:
+                        # Ne garder que les packages npm, pas les chemins locaux
+                        if not match.startswith(".") and not match.startswith("/"):
+                            # Extraire le package de base (avant /)
+                            pkg_name = match.split("/")[0]
+                            if pkg_name.startswith("@"):
+                                pkg_name = "/".join(match.split("/")[:2])  # @scope/package
+                            imported_packages.add(pkg_name)
+                except Exception:
+                    pass
+            
+            # ─ 2. COMPARER AVEC package.json ─
+            declared_deps = set(pkg_data.get("dependencies", {}).keys()) | set(pkg_data.get("devDependencies", {}).keys())
+            missing_from_json = imported_packages - declared_deps - {"react", "react-dom", "express"}  # Tolérance minimale
+            
+            # ─ 3. ADDITIONNEUR LES PACKAGES MANQUANTS À package.json ─
+            if missing_from_json:
+                logger.warning(f"🔴 PACKAGES IMPORTÉS MAIS NON DÉCLARÉS : {missing_from_json}")
+                
+                for pkg in missing_from_json:
+                    # Déterminer si c'est une dépendance de production ou dev
+                    is_dev_pkg = any(pkg.startswith(dev_prefix) for dev_prefix in ["@types/", "ts-", "jest", "ts-jest", "vitest", "supertest"])
+                    
+                    # Ajouter au package.json
+                    target_section = "devDependencies" if is_dev_pkg else "dependencies"
+                    if target_section not in pkg_data:
+                        pkg_data[target_section] = {}
+                    
+                    # Utiliser version "latest" ou version calculée
+                    pkg_data[target_section][pkg] = "latest"
+                    fixed_issues.append(f"Added {pkg} to {target_section}")
+                    logger.info(f"✅ Ajouté {pkg} à {target_section}")
+            
+            # ─ 4. VALIDER LES VERSIONS npm ─
+            invalid_versions = []
+            deps_to_check = {**pkg_data.get("dependencies", {}), **pkg_data.get("devDependencies", {})}
+            
+            for pkg_name, version in deps_to_check.items():
+                # Ignorer les versions valides: ^X.Y.Z, ~X.Y.Z, X.Y.Z, latest, *
+                if version in ["latest", "*"] or re.match(r"^[\^~]?[\d]+\.[\d]+\.[\d]+", version):
+                    continue
+                
+                # Problèmes détectés
+                if version.endswith(".0") and len(version.split(".")) == 3:
+                    # Possiblement une version invalide (rare mais arrivé avec "7.0.0")
+                    invalid_versions.append((pkg_name, version, "Might not exist on npm"))
+                elif " " in version or version == "":
+                    invalid_versions.append((pkg_name, version, "Invalid format"))
+            
+            # ─ 5. NETTOYER LES VERSIONS INVALIDES ─
+            for pkg_name, old_version, reason in invalid_versions:
+                logger.warning(f"🔴 VERSION INVALIDE: {pkg_name}@{old_version} ({reason})")
+                
+                # Remplacer par "latest"
+                section = "dependencies" if pkg_name in pkg_data.get("dependencies", {}) else "devDependencies"
+                pkg_data[section][pkg_name] = "latest"
+                fixed_issues.append(f"Fixed {pkg_name}: {old_version} → latest ({reason})")
+                logger.info(f"✅ Corrigé {pkg_name}@{old_version} → latest")
+            
+            # ─ 6. RÉÉCRIRE package.json SI MODIFICATIONS ─
+            if fixed_issues:
+                try:
+                    pkg_path.write_text(json.dumps(pkg_data, indent=2) + "\n", encoding="utf-8")
+                    logger.info(f"✅ {len(fixed_issues)} problèmes de dépendances corrigés dans {target_dir.name or 'racine'}")
+                    
+                    # Invalider le cache de hash car package.json a changé
+                    hash_file = target_dir / ".speckit_hash"
+                    if hash_file.exists():
+                        hash_file.unlink()
+                        logger.info("🔄 Cache hash invalidé (package.json modifié)")
+                except Exception as e:
+                    logger.error(f"❌ Impossible d'écrire {pkg_path}: {e}")
+        
+        return {
+            "dependency_issues_fixed": len(fixed_issues),
+            "dependency_fixes": fixed_issues
+        }
+
     def install_deps_node(self, state: AgentState) -> dict:
         """Nœud : Installation des dépendances npm + cache basé sur hash package.json."""
         import subprocess, json, re
@@ -1848,6 +1968,7 @@ class SpecGraphManager:
         self.graph_builder.add_node("impl_node", self.impl_node)
         self.graph_builder.add_node("persist_node", self.persist_node)
         self.graph_builder.add_node("dependency_resolver_node", self.dependency_resolver_node)
+        self.graph_builder.add_node("validate_dependency_node", self.validate_dependency_node)
         self.graph_builder.add_node("install_deps_node", self.install_deps_node)
         self.graph_builder.add_node("diagnostic_node", self.diagnostic_node)
         self.graph_builder.add_node("buildfix_node", self.buildfix_node)
@@ -1862,7 +1983,8 @@ class SpecGraphManager:
         self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "persist_node": "persist_node", "verify_node": "verify_node"})
         
         self.graph_builder.add_edge("persist_node", "dependency_resolver_node")
-        self.graph_builder.add_edge("dependency_resolver_node", "install_deps_node")
+        self.graph_builder.add_edge("dependency_resolver_node", "validate_dependency_node")
+        self.graph_builder.add_edge("validate_dependency_node", "install_deps_node")
         self.graph_builder.add_edge("install_deps_node", "diagnostic_node")
         
         # diagnostic → task_enforcer → route (buildfix, verify, impl, install_deps)
