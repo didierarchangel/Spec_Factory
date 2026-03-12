@@ -77,6 +77,12 @@ class GraphicDesign:
                      if standard_fallback:
                          patterns = standard_fallback
                          logger.info(f"   🔄 Falling back to 'standard' system for category: {category}")
+                     else:
+                         logger.warning(f"⚠️ Standard fallback also failed for category: {category}. Using default.")
+                         patterns = self.engine.patterns[:5]
+                 else:
+                     logger.warning(f"⚠️ Using default patterns.")
+                     patterns = self.engine.patterns[:5]
 
         # Rank and return the best one
         best = self.ranker.rank(patterns, 9) # Arbitrary 9 for constitution alignment for now
@@ -235,6 +241,11 @@ class GraphicDesign:
                     stack = data.get("stack_preferences", {})
                     if not system:
                         system = stack.get("design")
+                    
+                    # Ensure system is valid (could be empty string in some lock files)
+                    if not system or system.strip() == "":
+                        system = "standard"
+                        
                     framework = stack.get("framework", framework)
                     logger.info(f"   ✅ Specs from lock: system={system}, framework={framework}")
             except Exception as e:
@@ -259,7 +270,7 @@ class GraphicDesign:
         result = {
             "pattern": pattern["id"],
             "category": category,
-            "design_system": system,
+            "design_system": pattern.get("system", system),
             "framework": framework,
             "ui_ast": ast.to_json(),
             "tailwind": pattern.get("tailwind", {}),

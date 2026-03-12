@@ -1,0 +1,32 @@
+INFO:__main__:🧪 Testing API Route Extraction Filtering...
+INFO:core.graph:🧠 Cerveau LangGraph compilé - Nouvelle Architecture.
+INFO:core.graph:📋 Fichiers obligatoires identifiés dans checklist: ['backend/src/routes/auth.routes.ts', 'backend/src/controllers/auth.controller.ts']
+INFO:__main__:✅ API Route Extraction Filtering passed!
+INFO:__main__:🧪 Testing GraphicDesign Pattern Loading with fallback...
+INFO:core.GraphicDesign:🎨 GraphicDesign.generate() ACTIVATED for: Create a dashboard...
+INFO:core.GraphicDesign:   📋 Intent detected: table
+INFO:core.GraphicDesign:   ✅ Specs from lock: system=premium, framework=react
+INFO:core.GraphicDesign:   🎯 Final system: premium | Framework: react
+INFO:core.GraphicDesign:   ✅ Using patterns from preferred system: premium
+INFO:core.GraphicDesign:   🎀 Pattern selected: premium_table
+INFO:core.GraphicDesign:🏗️ AST built: table pattern with 1 child components
+INFO:core.GraphicDesign:✅ 🎨 GraphicDesign generation complete!
+INFO:core.GraphicDesign:   📦 Pattern: premium_table
+INFO:core.GraphicDesign:   🎯 System: premium
+INFO:core.GraphicDesign:   📐 Tailwind classes: 7 keys
+INFO:core.GraphicDesign:🎨 GraphicDesign.generate() ACTIVATED for: Create a hero banner...
+INFO:core.GraphicDesign:   📋 Intent detected: hero
+INFO:core.GraphicDesign:   ✅ Specs from lock: system=premium, framework=react
+INFO:core.GraphicDesign:   🎯 Final system: premium | Framework: react
+WARNING:core.GraphicDesign:⚠️ No patterns found for system: premium in category: hero
+INFO:core.GraphicDesign:   🔄 Falling back to 'standard' system for category: hero
+INFO:core.GraphicDesign:   🎀 Pattern selected: hero_centered_gradient
+INFO:core.GraphicDesign:🏗️ AST built: hero pattern with 2 child components
+INFO:core.GraphicDesign:✅ 🎨 GraphicDesign generation complete!
+INFO:core.GraphicDesign:   📦 Pattern: hero_centered_gradient
+INFO:core.GraphicDesign:   🎯 System: premium
+INFO:core.GraphicDesign:   📐 Tailwind classes: 4 keys
+ERROR:__main__:❌ Assertion Failed: Should fallback to standard if premium pattern missing, got premium
+🎨 GraphicDesign ENGINE RUNNING
+🎨 GraphicDesign ENGINE RUNNING
+DEBUG: result2 = {'pattern': 'hero_centered_gradient', 'category': 'hero', 'design_system': 'premium', 'framework': 'react', 'ui_ast': {'name': 'Page', 'props': {}, 'children': [{'name': 'Layout', 'props': {'container': 'py-24 text-center bg-gradient-to-r from-blue-500 to-blue-600'}, 'children': [{'name': 'HeroBanner', 'props': {'container': 'py-24 text-center bg-gradient-to-r from-blue-500 to-blue-600', 'title': 'text-5xl font-bold text-white', 'subtitle': 'text-xl text-blue-100 mt-4', 'button': 'mt-8 bg-white text-blue-600 px-6 py-3 rounded-lg'}, 'children': []}, {'name': 'CTAButton', 'props': {'button': 'mt-8 bg-white text-blue-600 px-6 py-3 rounded-lg'}, 'children': []}]}]}, 'tailwind': {'container': 'py-24 text-center bg-gradient-to-r from-blue-500 to-blue-600', 'title': 'text-5xl font-bold text-white', 'subtitle': 'text-xl text-blue-100 mt-4', 'button': 'mt-8 bg-white text-blue-600 px-6 py-3 rounded-lg'}, 'scores': {'ux': 9.4, 'responsive': 9.2, 'aesthetic': 9.5}}

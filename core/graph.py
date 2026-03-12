@@ -1672,6 +1672,10 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 # Normaliser les backslashes en forward slashes
                 path = path.replace('\\', '/')
                 
+                # Ignorer les routes d'API qui n'ont pas d'extension de fichier valide
+                if path.startswith('/api/') or ('/' in path and not path.endswith((".ts", ".js", ".tsx", ".jsx", ".json", ".md", ".yml", ".yaml"))):
+                    continue
+                
                 # Vérifier que ce n'est pas un chemin partiel comme "src/..."
                 # (sera traité plus tard avec module detection)
                 if path not in seen_full_paths:
@@ -1697,6 +1701,12 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             
             for item in all_backtick_items:
                 item = item.strip()
+                item = item.replace('\\', '/')
+                
+                # Ignorer TOUTES les routes d'API ou chemins invalides (sans extension ni slash final)
+                if item.startswith('/api/') or ('/' in item and not item.endswith('/') and not item.endswith((".ts", ".js", ".tsx", ".jsx", ".json", ".md", ".yml", ".yaml"))):
+                    continue
+                
                 # Vérifier si c'est déjà un chemin complet (contient /)
                 if '/' in item or '\\' in item:
                     # C'est un chemin (fichier ou répertoire)
