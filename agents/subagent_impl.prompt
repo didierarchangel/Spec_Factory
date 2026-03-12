@@ -223,6 +223,13 @@ Si le projet est en mode **Premium**, tu DOIS impérativement :
 - Privilégier le **Glassmorphism** (`backdrop-blur-xl`, `bg-white/80`, `border-white/20`).
 - Ajouter des micro-animations (pulse, ping) sur les indicateurs de statut.
 
+Règle 4.2 : DIMENSIONS DES FORMULAIRES (PORTRAIT)
+Tout formulaire de saisie (Login, Register, Création/Edition) DOIT :
+- Être compact et privilégier une forme "en portrait".
+- Avoir une largeur maximale restreinte (ex: `max-w-[400px]`).
+- Éviter d'être trop long pour ne pas encombrer l'écran ou dépasser le footer visuellement.
+- Utiliser un espacement (padding) modéré pour garder un aspect dense et premium.
+
 Règle 4.2 : COHÉRENCE DES ENTITÉS (TRANSVERSALE)
 Tu DOIS maintenir une cohérence absolue des noms de champs (fields) entre les couches :
 - Modèle de données (ex: Article.model.ts)

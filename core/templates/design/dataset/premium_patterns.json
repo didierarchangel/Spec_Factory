@@ -23,10 +23,10 @@
         "category": "card",
         "layout": "vibrant",
         "tailwind": {
-            "container": "p-10 bg-white rounded-[2.5rem] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.08)] border border-gray-50 hover:-translate-y-2 transition-all duration-500 animate-float",
-            "title": "text-4xl font-black text-gray-900 tracking-tighter uppercase mb-6",
-            "description": "text-gray-400 font-bold uppercase tracking-widest text-[10px] leading-relaxed",
-            "input": "w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500/20 transition-all font-medium text-gray-900 placeholder:text-gray-300"
+            "container": "p-8 bg-white rounded-[2.5rem] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.08)] border border-gray-50 hover:-translate-y-2 transition-all duration-500 animate-float max-w-[400px] mx-auto",
+            "title": "text-4xl font-black text-gray-900 tracking-tighter uppercase mb-6 leading-none",
+            "description": "text-gray-400 font-bold uppercase tracking-widest text-[9px] leading-relaxed",
+            "input": "w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-blue-500/20 transition-all font-medium text-gray-900 placeholder:text-gray-300 text-sm"
         },
         "scores": {
             "ux": 9.5,
