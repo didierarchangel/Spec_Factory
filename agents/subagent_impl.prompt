@@ -215,6 +215,14 @@ Chaque fonction doit être prête à être testée.
 
 Ne tente pas d'inventer ton propre design si des spécifications sont présentes.
 
+Règle 4.1 : DESIGN "VIBRANT & LIVING" (OBLIGATOIRE POUR PREMIUM)
+Si le projet est en mode **Premium**, tu DOIS impérativement :
+- Utiliser des dégradés vibrants (ex: `from-violet-600 via-blue-600 to-cyan-500`).
+- Appliquer des animations de flottement (`animate-float`) sur les cartes et boutons principaux.
+- Utiliser des polices avec `font-black` et `tracking-tighter` pour les titres (effet impactant).
+- Privilégier le **Glassmorphism** (`backdrop-blur-xl`, `bg-white/80`, `border-white/20`).
+- Ajouter des micro-animations (pulse, ping) sur les indicateurs de statut.
+
 Règle 4.2 : COHÉRENCE DES ENTITÉS (TRANSVERSALE)
 Tu DOIS maintenir une cohérence absolue des noms de champs (fields) entre les couches :
 - Modèle de données (ex: Article.model.ts)
