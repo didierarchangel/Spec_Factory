@@ -415,7 +415,7 @@ Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 
 RÈGLE 12.2 : MIDDLEWARE DE DÉBOGAGE (OBLIGATOIRE)
 Tout projet Backend Express DOIT inclure dans `app.ts` :
-1. **`express.json()`** ET **`express.urlencoded({ extended: true })`** AVANT les routes.
+1. **`express.json()`** ET **`express.urlencoded{{ extended: true }}`** AVANT les routes.
 2. **Middleware de débogage** entre les parsers et les routes, qui affiche :
    - La méthode et l'URL de la requête
    - Le `Content-Type` du header
@@ -452,7 +452,7 @@ Pour tout projet frontend utilisant **Vite** :
 
 Règle 15.2 : IMPORTS CROSS-PROJETS (INTERDIT)
 **INTERDICTION ABSOLUE** d'importer directement des fichiers du `backend/` dans le `frontend/` ou vice versa.
-- ❌ `import { IUser } from '../../../backend/src/models/User.model'`
+- ❌ `import {{ IUser }} from '../../../backend/src/models/User.model'`
 - ✅ Créer une interface locale dans le frontend qui miroir le type backend.
 Les bundlers (Vite, Webpack) ne peuvent pas résoudre ces imports transversaux.
 
