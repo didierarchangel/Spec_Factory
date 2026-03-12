@@ -1337,6 +1337,16 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             
             logger.info(f"📊 État pré-audit : generation_failed={generation_failed}, structure_valid={structure_valid}")
             
+            # ─── HARD STRUCTURE VALIDATION ───
+            if not structure_valid:
+                logger.error("❌ Structure validation failed. Aborting audit.")
+                return {
+                    **state,
+                    "generation_failed": True,
+                    "validation_status": "STRUCTURE_INVALID",
+                    "error_count": state.get("error_count", 0) + 1
+                }
+            
             # 🛡️ RETRY avec backoff pour l'audit lui-même
             invoke_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
@@ -1445,6 +1455,11 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             
             verified_missing = []
             for missing_file in result.get("missing_files", []):
+                # Ignorer les fausses détections d'URL par le LLM (identiques au filtre dans etapes.py)
+                if missing_file.startswith('/api/') or ('/' in missing_file and not missing_file.endswith((".ts", ".js", ".tsx", ".jsx", ".json", ".md", ".yml", ".yaml")) and not missing_file.endswith('/')):
+                    logger.info(f"⏭️ Ignore faux positif (URL/Concept): {missing_file}")
+                    continue
+                
                 # Essayer 3 niveaux de correspondance
                 if self._file_exists_in_tree(missing_file, file_tree_list):
                     logger.info(f"✅ Fichier trouvé après post-processing: {missing_file}")
@@ -2289,8 +2304,8 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 pass
             
         if has_structure_errors:
-            logger.warning("🔨 Manque de fichiers structuraux : route vers impl_node (PATCH).")
-            return "impl_node"
+            logger.warning("🔨 Échec de validation structurelle : route vers verify_node pour avorter.")
+            return "verify_node"
             
         # ⚠️ CHANGE : Ne déclencher buildfix QUE si la cible a des erreurs
         if has_tsc_errors_in_target:

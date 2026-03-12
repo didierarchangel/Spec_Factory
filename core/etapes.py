@@ -13,6 +13,16 @@ from langchain_core.output_parsers import StrOutputParser
 
 logger = logging.getLogger(__name__)
 
+def is_real_file(path: str):
+    return path.endswith((
+        ".ts", ".tsx",
+        ".js", ".jsx",
+        ".json", ".jsonc",
+        ".py",
+        ".md",
+        ".env", ".yaml", ".yml",
+        ".sh", ".css", ".html"
+    ))
 
 class EtapeManager:
     def __init__(self, model, project_root: str = "."):
@@ -322,7 +332,15 @@ class EtapeManager:
                 subtask_text = line.strip()
                 
                 # Patterns : `backend/tsconfig.json` ou `express`
-                items_to_check = re.findall(r'`([^`]+)`', subtask_text)
+                raw_paths = re.findall(r'`([^`]+)`', subtask_text)
+                
+                # Filtre universel : toute chaîne commençant par '/' est une URL (ex: /api/articles, /users, /products)
+                # Peu importe le domaine du projet (articles, users, orders...) — la règle est générique.
+                # On garde : fichiers avec extension valide, noms de packages (sans '/'), dossiers (finissant par '/')
+                items_to_check = [
+                    p for p in raw_paths
+                    if not p.startswith("/") and (is_real_file(p) or "/" not in p or p.endswith('/'))
+                ]
                 
                 if items_to_check:
                     all_ok = True
