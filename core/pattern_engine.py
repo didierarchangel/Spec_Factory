@@ -9,20 +9,39 @@ class PatternEngine:
         self._load_all_patterns(dataset_dir)
 
     def _load_all_patterns(self, dataset_dir):
-        """Loads all .json files from the dataset directory."""
+        """Loads all .json files from the dataset directory.
+        
+        Infers the 'system' field automatically from the filename:
+        - premium_patterns.json  →  system = 'premium'
+        - standard_patterns.json →  system = 'standard'
+        """
         path = Path(dataset_dir)
         if not path.exists():
             return
             
         for json_file in path.glob("*.json"):
-            if json_file.name == "generator_rules.json" or json_file.name == "pattern_index.json":
+            if json_file.name in ("generator_rules.json", "pattern_index.json"):
                 continue
+            
+            # Déduire le système depuis le nom de fichier
+            file_system = None
+            if "premium" in json_file.stem:
+                file_system = "premium"
+            elif "standard" in json_file.stem:
+                file_system = "standard"
+            
             try:
                 with open(json_file, encoding='utf-8') as f:
                     data = json.load(f)
                     if isinstance(data, list):
+                        for pattern in data:
+                            # Injecter 'system' si absent
+                            if isinstance(pattern, dict) and "system" not in pattern and file_system:
+                                pattern["system"] = file_system
                         self.patterns.extend(data)
                     elif isinstance(data, dict):
+                        if "system" not in data and file_system:
+                            data["system"] = file_system
                         self.patterns.append(data)
             except Exception as e:
                 print(f"Error loading {json_file}: {e}")
