@@ -124,6 +124,32 @@ L'agent d'exécution charge un contexte **strictement verrouillé** (Constitutio
 
 ---
 
+## 🏃‍♂️ Démarrer votre application générée
+
+Une fois que Speckit a généré votre code (par exemple, le backend), vous voudrez sûrement le lancer localement pour le tester. 
+
+**Important :** Speckit vérifie la robustesse du code, mais c'est à vous de lancer le serveur de développement.
+
+1. **Placez-vous dans le dossier généré** :
+```bash
+cd backend/  # ou cd frontend/
+```
+
+2. **Installez les dépendances** :
+Même si Speckit les gère en interne, votre environnement local en a besoin (surtout si vous clonez le projet ou venez de le créer) :
+```bash
+npm install
+```
+
+3. **Démarrez le serveur de développement** :
+Vous n'avez pas besoin de compiler le TypeScript à la main, un script est prévu pour ça :
+```bash
+npm start
+# ou npm run dev
+```
+
+---
+
 ## ⚡ Optimisation : Cache Intelligent des Dépendances
 
 Speckit.Factory intègre un **système de cache basé sur hash** pour accélérer drastiquement les exécutions successives.
