@@ -2546,17 +2546,24 @@ export const getDirname = (metaUrl: string) => {
         
         logger.info("🔎 Analyse proactive des dépendances (Dependency Resolver)...")
         
-        # Scan ALL available modules to ensure cross-module dependencies are caught
-        search_dirs = [self.root]
-        for d in ["backend", "frontend", "mobile"]:
-            if (self.root / d).exists():
-                search_dirs.append(self.root / d)
-        
         target_module = state.get("target_module")
+        search_dirs = []
+        
         if target_module:
-            logger.info(f"📍 Resolver (target: {target_module}) - Scanning all modules for safety")
+            module_path = self.root / target_module
+            if module_path.exists():
+                search_dirs = [module_path]
+                logger.info(f"📍 Resolver STRICT (target: {target_module}) - Scanning only this module")
+            else:
+                logger.warning(f"⚠️ Target module {target_module} untrouvable. Fallback scan root.")
+                search_dirs = [self.root]
         else:
-            logger.info(f"📍 Resolver scanning all modules")
+            # Fallback scan ALL available modules if no target set
+            search_dirs = [self.root]
+            for d in ["backend", "frontend", "mobile"]:
+                if (self.root / d).exists():
+                    search_dirs.append(self.root / d)
+            logger.info(f"📍 Resolver scanning all modules (no target set)")
         
         detected_missing = []
         
