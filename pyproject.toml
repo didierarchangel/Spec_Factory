@@ -24,6 +24,7 @@ dependencies = [
 packages = ["core", "utils", "agents", "protocols"]
 py-modules = ["speckit_cli"]
 include-package-data = true
+exclude-package-data = { "*" = ["node_modules", "backend/node_modules", "frontend/node_modules"] }
 
 [tool.setuptools.package-data]
 agents = ["*.prompt"]
