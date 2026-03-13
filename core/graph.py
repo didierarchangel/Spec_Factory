@@ -1235,6 +1235,128 @@ export const getDirname = (metaUrl: string) => {
             "impact_fichiers": written_paths
         }
 
+    def esm_compatibility_node(self, state: AgentState) -> dict:
+        """Nœud : Assure la compatibilité ESM pour tous les fichiers backend générés (post-persist).
+        
+        Remplace automatiquement :
+        - `__dirname` par l'utilitaire ESM `getDirname(import.meta.url)`
+        - Ajoute les imports manquants pour `getDirname`
+        - Force le préfixe `node:` pour les imports de modules natifs (ex: `import path from 'path'` -> `import path from 'node:path'`)
+        """
+        import re
+        from pathlib import Path
+        
+        logger.info("🔄 [POST-PERSIST] Application de la compatibilité ESM (__dirname, node: imports) sur les fichiers modifiés...")
+        
+        written_paths = state.get("impact_fichiers", [])
+        if not written_paths:
+            return {}
+            
+        fixed_files = []
+        
+        # S'assurer que src/utils/dirname.util.ts existe côté backend
+        backend_utils_dir = self.root / "backend" / "src" / "utils"
+        dirname_util_path = backend_utils_dir / "dirname.util.ts"
+        
+        dirname_util_content = '''import { fileURLToPath } from "url";
+import path from "node:path";
+
+/**
+ * Utilitaire ESM pour remplacer __dirname et __filename.
+ * @param metaUrl - Passer `import.meta.url` depuis le fichier appelant
+ */
+export const getDirname = (metaUrl: string) => {
+  const __filename = fileURLToPath(metaUrl);
+  return path.dirname(__filename);
+};
+'''
+        
+        # Modules natifs Node nécessitant (ou recommandant fortement) le préfixe node:
+        NODE_BUILTINS = [
+            "path", "fs", "url", "crypto", "child_process", "os", "http", 
+            "https", "stream", "util", "events", "assert"
+        ]
+        
+        created_util = False
+        
+        for p in written_paths:
+            # Ne traiter que les fichiers backend internes en .ts/.js
+            if not p.startswith("backend/src/") or not p.endswith((".ts", ".js")):
+                continue
+                
+            full_path = self.root / p
+            if not full_path.exists():
+                continue
+                
+            content = full_path.read_text(encoding="utf-8")
+            original_content = content
+            
+            # 1. Remplacement de __dirname
+            if "__dirname" in content and "getDirname" not in content and "fileURLToPath" not in content:
+                # Créer le dirname.util.ts si c'est la première fois qu'on en a besoin
+                if not dirname_util_path.exists() and not created_util:
+                    backend_utils_dir.mkdir(parents=True, exist_ok=True)
+                    dirname_util_path.write_text(dirname_util_content, encoding="utf-8")
+                    logger.info("✨ Création de backend/src/utils/dirname.util.ts (ESM compat.)")
+                    created_util = True
+                
+                # Calculer le chemin relatif vers utils depuis ce fichier
+                import os
+                rel_path_to_utils = os.path.relpath("backend/src/utils/dirname.util", os.path.dirname(p)).replace('\\', '/')
+                if not rel_path_to_utils.startswith('.'):
+                    rel_path_to_utils = './' + rel_path_to_utils
+                
+                # Injecter l'import
+                import_stmt = f'import {{ getDirname }} from "{rel_path_to_utils}";\n'
+                
+                # Insérer l'import après les imports existants, ou au début
+                import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
+                if import_match:
+                    last_import_end = import_match[-1].end()
+                    content = content[:last_import_end] + "\n" + import_stmt + content[last_import_end:]
+                else:
+                    content = import_stmt + "\n" + content
+                
+                # Injecter la déclaration __dirname
+                dirname_decl = '\nconst __dirname = getDirname(import.meta.url);\n'
+                
+                # On insère juste après les imports
+                import_match = list(re.finditer(r'^import\s+.*?;?\s*$', content, re.MULTILINE))
+                if import_match:
+                    last_import_end = import_match[-1].end()
+                    content = content[:last_import_end] + dirname_decl + content[last_import_end:]
+                else:
+                    content = dirname_decl + content
+            
+            # 2. Patch des imports natifs Node pour ajouter "node:"
+            for builtin in NODE_BUILTINS:
+                # Match `import path from 'path'` ou `import { join } from 'path'`
+                pattern1 = rf"import\s+(.*?)\s+from\s+['\"]({builtin})['\"]"
+                content = re.sub(pattern1, rf"import \1 from 'node:\2'", content)
+                
+                # Match `import * as fs from 'fs'` 
+                pattern2 = rf"import\s+\*\s+as\s+(\w+)\s+from\s+['\"]({builtin})['\"]"
+                content = re.sub(pattern2, rf"import * as \1 from 'node:\2'", content)
+            
+            # Si le contenu a été modifié, sauvegarder
+            if content != original_content:
+                full_path.write_text(content, encoding="utf-8")
+                fixed_files.append(p)
+                logger.info(f"🔧 ESM Patch appliqué sur {p} (__dirname / node: imports)")
+        
+        # Ajouter le fichier utilitaire à la liste s'il a été créé
+        if created_util and "backend/src/utils/dirname.util.ts" not in written_paths:
+            written_paths.append("backend/src/utils/dirname.util.ts")
+            state["impact_fichiers"] = written_paths
+            
+        status = "FIXED" if fixed_files else "NO_CHANGES"
+        logger.info(f"✅ ESM Compatibility (post-persist): {status} ({len(fixed_files)} files modified)")
+        
+        return {
+            "esm_status": status,
+            "impact_fichiers": written_paths
+        }
+
     def esm_import_resolver_node(self, state: AgentState) -> dict:
         """Nœud : Applique le resolver ESM automatique pour ajouter les extensions .js aux imports.
         
