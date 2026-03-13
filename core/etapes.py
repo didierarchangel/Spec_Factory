@@ -195,20 +195,25 @@ class EtapeManager:
                 })
         return steps
 
-    def get_progress(self) -> dict:
-        """Retourne un résumé de la progression : total, done, pending, pourcentage."""
-        steps = self.get_all_steps()
-        total = len(steps)
-        done = sum(1 for s in steps if s["status"] == "done")
-        pending = total - done
-        pct = round((done / total) * 100, 1) if total > 0 else 0.0
-
         return {
             "total": total,
             "done": done,
             "pending": pending,
             "progress_pct": pct,
         }
+
+    def _get_step_regex(self, step_id: str, status_box: str = r"\[.\]") -> str:
+        """Crée un regex flexible pour matcher l'ID d'étape avec ou sans zéro initial."""
+        # Séparer la partie numérique initiale si elle existe (ex: "02_backend" -> "02", "backend")
+        match = re.match(r"^(\d+)(_.*)$", step_id)
+        if match:
+            num, rest = match.groups()
+            num_int = int(num)
+            # Match ## [ ] 2_... ou ## [ ] 02_... ou ## [ ] 002_...
+            return rf"^## {status_box} 0*{num_int}{re.escape(rest)}(?:\s*:|$)"
+        else:
+            # Match exact si pas de préfixe numérique
+            return rf"^## {status_box} {re.escape(step_id)}(?:\s*:|$)"
 
     def get_subtasks_for_step(self, step_id: str) -> list[str]:
         """Retourne la liste des sous-tâches (texte brut) pour une étape donnée."""
@@ -219,8 +224,8 @@ class EtapeManager:
         subtasks = []
         inside_target = False
         
-        # Regex plus stricte pour éviter les correspondances partielles
-        step_header_pattern = rf"^## \[.\] {re.escape(step_id)}(?:\s*:|$)"
+        # Regex plus stricte mais flexible sur les zéros initiaux
+        step_header_pattern = self._get_step_regex(step_id, status_box=r"\[.\]")
         
         for line in lines:
             if re.match(step_header_pattern, line):
@@ -335,8 +340,8 @@ class EtapeManager:
         total_subtasks = 0
         header_index = -1
 
-        # Regex pour matcher l'étape cible
-        step_pattern = rf"^## \[ \] {re.escape(step_id)}(?:\s*:|$)"
+        # Regex flexible sur les zéros initiaux
+        step_pattern = self._get_step_regex(step_id, status_box=r"\[ \]")
 
         for line in lines:
             # Si on trouve le header de l'étape cible
@@ -455,8 +460,9 @@ class EtapeManager:
                 updated_lines.append(line)
 
         if not found:
-            # Vérifier si déjà complétée
-            if f"## [x] {step_id}" in self.etapes_path.read_text(encoding="utf-8"):
+            # Vérifier si déjà complétée avec le regex flexible
+            already_done_pattern = self._get_step_regex(step_id, status_box=r"\[x\]")
+            if re.search(already_done_pattern, self.etapes_path.read_text(encoding="utf-8"), re.MULTILINE):
                 logger.info("Étape '%s' déjà marquée comme terminée.", step_id)
                 if synthesis: self.add_step_to_history(step_id, synthesis)
                 return True
