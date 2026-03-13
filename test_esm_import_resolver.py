@@ -70,7 +70,7 @@ def test_complex_file():
     before = '''import express from "express"
 import { Request, Response } from "express"
 import { UserService } from "../services/user.service"
-import { validateEmail } from "../validators/email"
+import { validateEmail} from "../validators/email"
 import config from "../../config"
 import * as fs from "fs"
 

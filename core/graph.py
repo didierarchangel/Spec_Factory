@@ -477,25 +477,30 @@ class SpecGraphManager:
         # On utilise JsonOutputParser avec le modèle Pydantic de guard.py
         parser = JsonOutputParser(pydantic_object=SubagentAnalysisOutput)
         
-        # Injection des instructions Pydantic dans le prompt (simple string substitution)
-        prompt_text += "\n\n{format_instructions}"
-        prompt = ChatPromptTemplate.from_template(prompt_text)
+        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+        inject_dict = {
+            "constitution_content": state["constitution_content"],
+            "current_step": state["current_step"],
+            "completed_tasks_summary": state["completed_tasks_summary"],
+            "pending_tasks": state["pending_tasks"],
+            "target_task": state["target_task"],
+            "user_instruction": state.get("user_instruction", ""),
+            "format_instructions": parser.get_format_instructions()
+        }
         
+        # Replace placeholders safely without template parsing
+        for key, value in inject_dict.items():
+            placeholder = "{" + key + "}"
+            prompt_text = prompt_text.replace(placeholder, str(value))
+        
+        prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
         chain = prompt | self.model | StrOutputParser()
         
         try:
             import concurrent.futures
             
             def run_chain():
-                return self._invoke_with_retry(chain, {
-                    "constitution_content": state["constitution_content"],
-                    "current_step": state["current_step"],
-                    "completed_tasks_summary": state["completed_tasks_summary"],
-                    "pending_tasks": state["pending_tasks"],
-                    "target_task": state["target_task"],
-                    "user_instruction": state.get("user_instruction", ""),
-                    "format_instructions": parser.get_format_instructions()
-                })
+                return self._invoke_with_retry(chain, {}, max_attempts=3)
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future = executor.submit(run_chain)
@@ -771,10 +776,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
             
             parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
-            prompt_text += "\n\n{format_instructions}"
-            
-            prompt = ChatPromptTemplate.from_template(prompt_text)
-            chain = prompt | self.model | StrOutputParser()
+            format_instructions = parser.get_format_instructions()
             
             # 🛡️ FILRAGE DE CONTEXTE : Réduire la taille avant d'envoyer au LLM
             filtered = self._get_filtered_context(state)
@@ -811,27 +813,35 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             else:
                 logger.warning(f"⚠️ No design pattern found - using defaults")
 
-            # 🛡️ RETRY avec backoff pour éviter les erreurs réseau
-            invoke_dict = {
+            # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+            inject_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
-                "constitution_content": constitution_content,  # ← ALWAYS COMPLETE (never truncated)
+                "constitution_content": constitution_content,
                 "current_step": state["current_step"],
                 "completed_tasks_summary": state["completed_tasks_summary"],
                 "pending_tasks": state["pending_tasks"],
                 "target_task": state["target_task"],
-                "analysis_output": analysis_output,  # ← May be truncated (non-critical)
+                "analysis_output": analysis_output,
                 "feedback_correction": state.get("feedback_correction", ""),
-                "terminal_diagnostics": terminal_diagnostics,  # ← May be truncated (diagnostic only)
-                "code_map": code_map_to_use,  # ← Filtered by _get_filtered_context()
-                "file_tree": file_tree_to_use,  # ← Filtered by _get_filtered_context()
-                "design_spec": design_spec_formatted,  # 🎨 ← NOW formatted and readable for LLM
+                "terminal_diagnostics": terminal_diagnostics,
+                "code_map": code_map_to_use,
+                "file_tree": file_tree_to_use,
+                "design_spec": design_spec_formatted,
                 "subtask_checklist": state.get("subtask_checklist", "Non disponible"),
                 "user_instruction": state.get("user_instruction", ""),
-                "existing_code_snapshot": existing_snapshot,  # ← May be truncated (PATCH mode only)
-                "format_instructions": parser.get_format_instructions()
+                "existing_code_snapshot": existing_snapshot,
+                "format_instructions": format_instructions
             }
             
-            raw_output = self._invoke_with_retry(chain, invoke_dict, max_attempts=3)
+            # Replace placeholders safely without template parsing
+            for key, value in inject_dict.items():
+                placeholder = "{" + key + "}"
+                prompt_text = prompt_text.replace(placeholder, str(value))
+            
+            prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
+            chain = prompt | self.model | StrOutputParser()
+            
+            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
 
             result = self._safe_parse_json(raw_output, SubagentImplOutput)
             new_code = result.get("code", "")
@@ -1968,12 +1978,9 @@ export const getDirname = (metaUrl: string) => {
 
         logger.info(f"🛡️ Début de l'Audit pour le code généré.")
         
+        # Charger le prompt et le parser
         prompt_text = self._load_prompt("subagent_verify.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentVerifyOutput)
-        prompt_text += "\n\n{format_instructions}"
-        
-        prompt = ChatPromptTemplate.from_template(prompt_text)
-        chain = prompt | self.model | StrOutputParser()
         
         try:
             # 🛡️ IMPROVED: Capturer l'état de génération AVANT l'audit
@@ -2021,7 +2028,8 @@ export const getDirname = (metaUrl: string) => {
             # Forcer un score strict basé sur la checklist
             checklist_score = int((completed / max(1, total_tasks)) * 100)
             
-            invoke_dict = {
+            # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+            inject_dict = {
                 "constitution_hash": state.get("constitution_hash", "INCONNU"),
                 "constitution_content": state["constitution_content"],
                 "current_step": state["current_step"],
@@ -2039,7 +2047,15 @@ export const getDirname = (metaUrl: string) => {
                 "format_instructions": parser.get_format_instructions()
             }
             
-            raw_output = self._invoke_with_retry(chain, invoke_dict, max_attempts=3)
+            # Replace placeholders safely without template parsing
+            for key, value in inject_dict.items():
+                placeholder = "{" + key + "}"
+                prompt_text = prompt_text.replace(placeholder, str(value))
+            
+            # Créer la chaîne une seule fois, APRÈS tous les remplacements
+            chain = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text) | self.model | StrOutputParser()
+            
+            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
             result = self._safe_parse_json(raw_output, SubagentVerifyOutput)
             
             verdict = result["verdict_final"].upper()
@@ -2128,18 +2144,24 @@ export const getDirname = (metaUrl: string) => {
         logger.info("🛡️ Vérification structurelle (TaskEnforcer)...")
         prompt_text = self._load_prompt("subagent_Speckit-TaskEnforcer.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentTaskEnforcerOutput)
-        prompt_text += "\n\n{format_instructions}"
         
-        prompt = ChatPromptTemplate.from_template(prompt_text)
+        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
+        inject_dict = {
+            "subtask_checklist": state.get("subtask_checklist", ""),
+            "file_tree": state.get("file_tree", ""),
+            "format_instructions": parser.get_format_instructions()
+        }
+        
+        # Replace placeholders safely without template parsing
+        for key, value in inject_dict.items():
+            placeholder = "{" + key + "}"
+            prompt_text = prompt_text.replace(placeholder, str(value))
+        
+        prompt = ChatPromptTemplate.from_template("You are a helpful assistant.\n\n" + prompt_text)
         chain = prompt | self.model | StrOutputParser()
         
         try:
-            invoke_dict = {
-                "subtask_checklist": state.get("subtask_checklist", ""),
-                "file_tree": state.get("file_tree", ""),
-                "format_instructions": parser.get_format_instructions()
-            }
-            raw_output = self._invoke_with_retry(chain, invoke_dict, max_attempts=3)
+            raw_output = self._invoke_with_retry(chain, {}, max_attempts=3)
             result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
             
             # ──────── POST-PROCESSING: Vérifier les fichiers manquants en Python ────────
