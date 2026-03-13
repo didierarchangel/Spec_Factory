@@ -877,19 +877,21 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 logger.info(f"🛡️ ArchitectureGuard: Validating {len(paths)} files before persistence...")
                 self.arch_guard.validate(task_type, paths)
             
-            state["arch_guard_status"] = "PASSED"
-            state["impact_fichiers"] = paths # Mettre à jour avec la liste vérifiée
+            return {
+                "arch_guard_status": "PASSED",
+                "impact_fichiers": paths
+            }
         except ValueError as e:
             error_msg = str(e)
             logger.error(f"🛑 ArchitectureGuard Error: {error_msg}")
             
-            state["arch_guard_status"] = "FAILED"
-            state["validation_status"] = "REJETÉ"
-            state["feedback_correction"] = f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. Please correct the file paths to respect the project architecture constraints."
-            state["error_count"] = state.get("error_count", 0) + 1
-            state["last_error"] = error_msg
-
-        return state
+            return {
+                "arch_guard_status": "FAILED",
+                "validation_status": "REJETÉ",
+                "feedback_correction": f"CRITICAL ARCHITECTURE VIOLATION: {error_msg}. Please correct the file paths to respect the project architecture constraints.",
+                "error_count": state.get("error_count", 0) + 1,
+                "last_error": error_msg
+            }
 
     def path_guard_node(self, state: AgentState) -> dict:
         """Nœud : Garde protectrice pour la normalisation et validation des chemins.
@@ -1097,7 +1099,7 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         
         written_paths = state.get("impact_fichiers", [])
         if not written_paths:
-            return {"esm_status": "SKIPPED"}
+            return {}
             
         fixed_files = []
         
@@ -1227,8 +1229,10 @@ export const getDirname = (metaUrl: string) => {
         status = "FIXED" if fixed_files else "NO_CHANGES"
         logger.info(f"✅ ESM Compatibility: {status} ({len(fixed_files)} files modified)")
         
-        state["esm_status"] = status
-        return state
+        return {
+            "esm_status": status,
+            "impact_fichiers": written_paths
+        }
 
     def scaffold_node(self, state: AgentState) -> dict:
         """Nœud : Scaffolding initial pour s'assurer que les fichiers de base existent toujours, protégeant contre les hallucinations vides du LLM."""
@@ -1946,8 +1950,7 @@ export const getDirname = (metaUrl: string) => {
             result["missing_tasks"] = len(verified_missing)
             
             if len(verified_missing) == 0:
-                state["validation_status"] = "STRUCTURE_OK"
-                return state
+                return {"validation_status": "STRUCTURE_OK"}
             else:
                 return {
                     "validation_status": "STRUCTURE_KO",
@@ -1955,9 +1958,10 @@ export const getDirname = (metaUrl: string) => {
                     "error_count": state.get("error_count", 0) + 1
                 }
         except Exception as e:
-            state["validation_status"] = "STRUCTURE_KO"
-            state["feedback_correction"] = str(e)
-            return state
+            return {
+                "validation_status": "STRUCTURE_KO",
+                "feedback_correction": str(e)
+            }
 
     def code_map_node(self, state: AgentState) -> dict:
         """Nœud de génération de la Semantic Code Map."""
@@ -2281,7 +2285,9 @@ export const getDirname = (metaUrl: string) => {
         
         for required_file in required_files:
             # 🛡️ FIX: Gérer les fichiers sans extension (ex: user.service -> user.service.ts)
-            if '.' not in required_file.split('/')[-1] and not required_file.endswith('/'):
+            # Mais ne pas rajouter .ts si une extension existe déjà
+            basename = required_file.split('/')[-1]
+            if '.' not in basename and not required_file.endswith('/'):
                 # Déterminer l'extension par défaut
                 if "backend/src" in required_file or "frontend/src" in required_file:
                     required_file += ".ts"
@@ -2659,8 +2665,22 @@ export const getDirname = (metaUrl: string) => {
                     logger.warning(f"⚠️ Module manquant détecté (via import): {pkg_name} (source: {imp})")
                     detected_missing.append(pkg_name)
         
+        # 🔴 Liste officielle des Built-ins Node.js (Filtrage)
+        NODE_BUILTINS = {
+            "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
+            "constants", "crypto", "dgram", "dns", "domain", "events", "fs", "fs/promises",
+            "http", "http2", "https", "inspector", "module", "net", "os", "path", "path/posix",
+            "path/win32", "perf_hooks", "process", "punycode", "querystring", "readline",
+            "readline/promises", "repl", "stream", "stream/consumers", "stream/promises",
+            "stream/web", "string_decoder", "timers", "timers/promises", "tls", "trace_events",
+            "tty", "url", "util", "util/types", "v8", "vm", "wasi", "worker_threads", "zlib"
+        }
+        
         # Fusionner avec les modules manquants détectés par diagnostic_node
         all_missing = list(set(detected_missing + state.get("missing_modules", [])))
+        
+        # Filtrer les built-ins Node.js
+        all_missing = [m for m in all_missing if m not in NODE_BUILTINS and not m.startswith("node:")]
         
         if all_missing:
             logger.info(f"🎯 Modules à installer: {all_missing}")
