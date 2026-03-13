@@ -24,13 +24,11 @@ Tu dois diviser le projet en **Phases** logiques, puis en **Étapes** atomiques.
   3. *Intégrations* : API externes, services tiers.
   4. *Polissage* : UI/UX finesse, gestion d'erreurs globales.
 
+
 ## 2. RÈGLE DES CHEMINS (CONCORDANCE)
 Tu dois toujours mentionner les chemins de fichiers entre backticks (ex: `backend/src/server.ts`). 
 - Préfère les chemins complets si connus.
 - Le framework supporte la détection automatique dans `backend/`, `backend/src/`, `frontend/` et `frontend/src/` si le fichier est déplacé par erreur.
-
-## 2. FORMAT DE SORTIE EXIGÉ
-Ton résultat doit être un pur document Markdown utilisant STRICTEMENT la syntaxe des cases à cocher `[ ]`. Ne génère aucun texte d'introduction ni de conclusion.
 
 **Modèle exact à respecter :**
 
@@ -40,12 +38,21 @@ Ton résultat doit être un pur document Markdown utilisant STRICTEMENT la synta
 
 ## 🎯 PHASE 1 : INITIALISATION ET FONDATIONS
 - [ ] **Étape 1.1** : [Titre clair] - [Brève description de ce qui doit être codé]
+  - [ ] Initialiser : `cd backend && npm init -y` (Si Backend)
+  - [ ] Installer les dépendances : `cd backend && npm install express cors dotenv` (Exemples)
+  - [ ] Installer les deps de dev : `cd backend && npm install -D typescript ts-node @types/node` (Exemples)
+  - [ ] Initialiser : `cd frontend && npm init -y` (Si Frontend)
+  - [ ] Installer les dépendances : `cd frontend && npm install` (Si Frontend)
 - [ ] **Étape 1.2** : [Titre clair] - [Brève description]
 
-## � PHASE 2 : FONCTIONNALITÉS CŒUR (CORE FEATURES)
+## 🚀 PHASE 2 : FONCTIONNALITÉS CŒUR (CORE FEATURES)
 - [ ] **Étape 2.1** : [Titre clair] - [Brève description]
 ...
 ```
+
+## 2. FORMAT DE SORTIE EXIGÉ
+Ton résultat doit être un pur document Markdown utilisant STRICTEMENT la syntaxe des cases à cocher `[ ]`. Ne génère aucun texte d'introduction ni de conclusion.
+
 
 ## 3. LIMITE ANTI-HALLUCINATION
 Si la Constitution ne mentionne pas explicitement une technologie (ex: système de paiement stripe), tu as l'**INTERDICTION** d'inventer une étape de type *"Étape 3.1 : Intégration de Stripe"*. Ton plan doit être le miroir exact des technologies autorisées.

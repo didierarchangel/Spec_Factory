@@ -1175,6 +1175,30 @@ export const getDirname = (metaUrl: string) => {
                 # Match `import * as fs from 'fs'` 
                 pattern2 = rf"import\s+\*\s+as\s+(\w+)\s+from\s+['\"]({builtin})['\"]"
                 content = re.sub(pattern2, rf"import * as \1 from 'node:\2'", content)
+
+            # 3. Patch des imports relatifs pour ajouter .js (Requis par ESM NodeNext)
+            # Remplacement: import { foo } from "./bar" -> import { foo } from "./bar.js"
+            # Ignore si se termine déjà par .js, .json, .ts, etc.
+            def add_js_extension(match):
+                import_stmt = match.group(0)
+                path_str = match.group(2)
+                
+                # S'assurer qu'il s'agit d'un import relatif interne, pas d'un package npm,
+                # et ne pas ajouter .js si l'extension y est déjà (ou .json, .css etc)
+                if (path_str.startswith('.') or path_str.startswith('/')) and not path_str.split('/')[-1].count('.') > 0:
+                     return rf"{match.group(1)}'{path_str}.js'{match.group(3)}"
+                return import_stmt
+                
+            rel_import_pattern = r"(import\s+.*?\s+from\s+)['\"]([^'\"]+)['\"](;?)"
+            content = re.sub(rel_import_pattern, add_js_extension, content)
+            
+            # Application aux dynamic imports: import('./file') -> import('./file.js')
+            dyn_import_pattern = r"(import\s*\(\s*)['\"]([^'\"]+)['\"](\s*\))"
+            content = re.sub(dyn_import_pattern, add_js_extension, content)
+            
+            # Application aux re-exports: export { x } from './file' -> export { x } from './file.js'
+            re_export_pattern = r"(export\s+.*?\s+from\s+)['\"]([^'\"]+)['\"](;?)"
+            content = re.sub(re_export_pattern, add_js_extension, content)
             
             # Si le contenu a été modifié, sauvegarder
             if content != original_content:
