@@ -1599,11 +1599,16 @@ export const getDirname = (metaUrl: string) => {
         # 🛡️ STOCKER LE RÉSULTAT DU SCANNER COMME SOURCE DE VÉRITÉ
         state["scanner_missing_modules"] = missing_from_scanner
         
+        import shutil
+        npm_path = shutil.which("npm") or shutil.which("npm.cmd")
+        
+        # Vérifier si on part de 0 (scaffold tout frais)
+        needs_base_install = not (target_dir / "node_modules").exists()
+        
         # ═══ RÈGLE ARCHITECTURALE ═══
-        # Si le scanner dit 0 → c'est 0
-        # Pas de fallback au LLM (qui peut halluciner)
-        if not missing_from_scanner:
-            logger.info("✅ Scanner confirme : aucune dépendance manquante.")
+        # Si le scanner dit 0 → c'est 0, sauf si node_modules manque
+        if not missing_from_scanner and not needs_base_install:
+            logger.info("✅ Scanner confirme : aucune dépendance manquante et node_modules présent.")
             state["missing_modules"] = []
             return state
         
@@ -1611,7 +1616,7 @@ export const getDirname = (metaUrl: string) => {
         attempted = state.get("attempted_installs", [])
         filtered_missing = [m for m in missing_from_scanner if m not in attempted]
         
-        if not filtered_missing:
+        if not filtered_missing and not needs_base_install:
             logger.info(f"⚠️ Tous les modules ont déjà été tentés: {missing_from_scanner}")
             logger.warning("🛑 Arrêt des tentatives d'installation pour éviter la boucle infinie.")
             state["missing_modules"] = []
@@ -1622,21 +1627,24 @@ export const getDirname = (metaUrl: string) => {
             logger.info(f"⏭️  Modules déjà tentés (ignorés): {list(skipped)}")
         
         # ─── Installer les modules manquants ───
-        logger.warning(f"🚀 Installation de {len(filtered_missing)} modules: {filtered_missing}...")
+        if needs_base_install and not filtered_missing:
+            logger.warning("🚀 Installation de base (npm install global) car node_modules est absent...")
+            install_args = [npm_path, "install"]
+        else:
+            logger.warning(f"🚀 Installation de {len(filtered_missing)} modules: {filtered_missing}...")
+            install_args = [npm_path, "install"] + filtered_missing
         
         # 🛡️ Tracker les tentatives avant d'essayer
         state["attempted_installs"] = attempted + filtered_missing
         
         try:
-            import shutil
-            npm_path = shutil.which("npm") or shutil.which("npm.cmd")
             if not npm_path:
                 logger.error("❌ npm not found in PATH")
                 state["missing_modules"] = []
                 return state
             
             subprocess.run(
-                [npm_path, "install"] + filtered_missing,
+                install_args,
                 cwd=str(target_dir),
                 capture_output=True,
                 text=True,
