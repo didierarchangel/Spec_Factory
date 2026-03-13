@@ -8,7 +8,7 @@ from typing import TypedDict, List
 from itertools import chain
 from langgraph.graph import StateGraph, START, END
 
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput, SubagentTaskEnforcerOutput
@@ -477,16 +477,9 @@ class SpecGraphManager:
         # On utilise JsonOutputParser avec le modèle Pydantic de guard.py
         parser = JsonOutputParser(pydantic_object=SubagentAnalysisOutput)
         
-        # Injection des instructions Pydantic dans le prompt
-        prompt_text += "\n\n{{ format_instructions }}"
-        prompt = PromptTemplate(
-            template=prompt_text,
-            input_variables=[
-                "constitution_content", "current_step", "completed_tasks_summary",
-                "pending_tasks", "target_task", "user_instruction", "format_instructions"
-            ],
-            template_format="jinja2"
-        )
+        # Injection des instructions Pydantic dans le prompt (simple string substitution)
+        prompt_text += "\n\n{format_instructions}"
+        prompt = ChatPromptTemplate.from_template(prompt_text)
         
         chain = prompt | self.model | StrOutputParser()
         
@@ -772,24 +765,14 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         if is_patch_mode:
             logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
             existing_snapshot = self._read_existing_code()
-            prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{{ feedback_correction }}"
-            prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{{ existing_code_snapshot }}"
+            prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{feedback_correction}"
+            prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{existing_code_snapshot}"
             prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
         
         parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
-        prompt_text += "\n\n{{ format_instructions }}"
+        prompt_text += "\n\n{format_instructions}"
         
-        prompt = PromptTemplate(
-            template=prompt_text,
-            input_variables=[
-                "constitution_hash", "constitution_content", "current_step",
-                "completed_tasks_summary", "pending_tasks", "target_task", "analysis_output",
-                "feedback_correction", "terminal_diagnostics", "code_map", "file_tree",
-                "design_spec", "subtask_checklist", "user_instruction", 
-                "existing_code_snapshot", "format_instructions"
-            ],
-            template_format="jinja2"
-        )
+        prompt = ChatPromptTemplate.from_template(prompt_text)
         chain = prompt | self.model | StrOutputParser()
         
         try:
@@ -1987,16 +1970,9 @@ export const getDirname = (metaUrl: string) => {
         
         prompt_text = self._load_prompt("subagent_verify.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentVerifyOutput)
-        prompt_text += "\n\n{{ format_instructions }}"
+        prompt_text += "\n\n{format_instructions}"
         
-        prompt = PromptTemplate(
-            template=prompt_text,
-            input_variables=[
-                "constitution_content", "validation_status", "code_to_verify",
-                "file_tree", "format_instructions"
-            ],
-            template_format="jinja2"
-        )
+        prompt = ChatPromptTemplate.from_template(prompt_text)
         chain = prompt | self.model | StrOutputParser()
         
         try:
@@ -2152,16 +2128,9 @@ export const getDirname = (metaUrl: string) => {
         logger.info("🛡️ Vérification structurelle (TaskEnforcer)...")
         prompt_text = self._load_prompt("subagent_Speckit-TaskEnforcer.prompt")
         parser = JsonOutputParser(pydantic_object=SubagentTaskEnforcerOutput)
-        prompt_text += "\n\n{{ format_instructions }}"
+        prompt_text += "\n\n{format_instructions}"
         
-        prompt = PromptTemplate(
-            template=prompt_text,
-            input_variables=[
-                "constitution_content", "target_task", "file_tree",
-                "code_map", "format_instructions"
-            ],
-            template_format="jinja2"
-        )
+        prompt = ChatPromptTemplate.from_template(prompt_text)
         chain = prompt | self.model | StrOutputParser()
         
         try:

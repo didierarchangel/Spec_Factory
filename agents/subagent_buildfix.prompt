@@ -80,9 +80,9 @@ Si le project est React (dossier `frontend/`) :
 
 ## 4. Props Type Errors (TypeScript + React)
 **Problème**: `TS2322: Type 'string' is not assignable to type 'number'` dans des props
-- Corriger les types des props : `interface Props { count: number }` pas `{ count: string }`
-- Optional props : `interface Props { title?: string }` (avec ?)
-- Children prop : `interface Props { children: React.ReactNode }`
+- Corriger les types des props : `interface Props {{ count: number }}` pas `{{ count: string }}`
+- Optional props : `interface Props {{ title?: string }}` (avec ?)
+- Children prop : `interface Props {{ children: React.ReactNode }}`
 
 ## 5. Missing React Import (Fichiers TSX)
 **Problème**: `React is not defined` (rare en React 17+, mais possible)
@@ -225,7 +225,7 @@ Si le projet est Vue (vérifier `vite.config.ts` et script `vue` dans package.js
 
 ## 1. Component Resolution Errors
 **Problème**: `Failed to resolve component` ou `Component not registered`
-- Assurer que les components sont exportés : `export default { ... }` ou `<script setup>`
+- Assurer que les components sont exportés : `export default {{ ... }}` ou `<script setup>`
 - Importer correctement sans extension : `import Home from './pages/Home'` pas `'./pages/Home.vue'`
 - Vérifier que tous les composants utilisés sont importés
 
@@ -250,7 +250,7 @@ Si le projet est Vue (vérifier `vite.config.ts` et script `vue` dans package.js
 
 ## 5. Missing Component Export
 **Problème**: `Failed to export component` ou component undefined
-- Chaque `.vue` DOIT exporter default : `export default { name: 'MyComponent', ... }`
+- Chaque `.vue` DOIT exporter default : `export default {{ name: 'MyComponent', ... }}`
 - Avec `<script setup>`: Pas besoin explicit export, auto-exporté
 - Vérifier la fermeture de tous les tags
 

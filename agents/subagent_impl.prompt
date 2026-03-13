@@ -78,12 +78,12 @@ TOUS les imports locaux TypeScript DOIVENT se terminer par `.js` après compilat
 
 ```typescript
 // ✅ CORRECT (en ESM)
-import { getUser } from "../services/user.service.js"
+import {{ getUser }} from "../services/user.service.js"
 import Button from "./Button.js"
 import config from "../../config.js"
 
 // ❌ INCORRECT (génère ERR_MODULE_NOT_FOUND en ESM)
-import { getUser } from "../services/user.service"
+import {{ getUser }} from "../services/user.service"
 import Button from "./Button"
 import config from "../../config"
 ```
@@ -100,7 +100,7 @@ import z from "../services/user.service.js"
 
 // Imports npm (sans .js)
 import express from "express"
-import { z } from "zod"
+import {{ z }} from "zod"
 
 // Imports absolus avec @ (sans .js)
 import Button from "@/components/Button"
@@ -124,8 +124,8 @@ Quand tu génères du code TypeScript pour un projet ESM :
 
 ```typescript
 // ✅ Généré avec règles ESM respectées
-import { UserService } from "../services/user.service.js"
-import { Request, Response } from "express"  // npm - pas de .js
+import {{ UserService }} from "../services/user.service.js"
+import {{ Request, Response }} from "express"  // npm - pas de .js
 import config from "../../config.js"
 import Button from "@/components/Button"      // absolu - pas de .js
 ```
