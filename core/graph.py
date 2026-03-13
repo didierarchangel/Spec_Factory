@@ -997,6 +997,15 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         # ─── ASSURER LES ARTEFACTS OBLIGATOIRES ───
         # Extraire et créer tout fichier manquant listés dans la checklist
         required_files = self._extract_required_files(state.get("subtask_checklist", ""))
+        
+        SYSTEM_CONFIG_FILES = [
+            ".eslintrc.json",
+            ".prettierrc.json",
+            "tsconfig.json",
+            "vite.config.ts"
+        ]
+        required_files.extend(SYSTEM_CONFIG_FILES)
+        
         missing_files = self._ensure_required_artifacts(required_files, written_paths)
         
         if missing_files:
@@ -1839,6 +1848,13 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                     required_files.append(combined_path)
                     seen_full_paths.add(combined_path)
                     logger.debug(f"📝 Pattern 3 (simple) matched: {combined_path}")
+            
+            # Pattern 5: Fichiers de configuration ou autres listés directement
+            list_matches = re.findall(r'([\w\.-]+\.(?:json|ts|tsx|js|jsx|yml|yaml))', line)
+            for f in list_matches:
+                if f not in seen_full_paths:
+                    required_files.append(f)
+                    seen_full_paths.add(f)
         
         if required_files:
             logger.info(f"📋 Fichiers obligatoires identifiés dans checklist: {required_files}")
