@@ -9,7 +9,8 @@ import shutil
 from pathlib import Path
 import logging
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, Any
+from pydantic import SecretStr
 
 # Charger les variables d'environnement (.env)
 # On cherche le .env dans le dossier courant de l'utilisateur (là où il lance la commande)
@@ -343,7 +344,7 @@ def init(path, here):
         click.echo("✅ Intelligence Graphique (design/) initialisée.")
     
     # Sélection interactive des IA
-    click.echo("\n🤖 Configuration des IA partenaires (Sélectionnez une ou plusieurs) :")
+    click.echo("\n🤖 Configuration des IA que vous souhaitez utiliser pour vibe-coder (Sélectionnez une ou plusieurs) :")
 
     available_ais = {
         "1": ("Google Gemini", "google"),
@@ -701,7 +702,7 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
         )
 
         return ChatGoogleGenerativeAI(
-            model=model,
+            model_name=model,
             timeout=60,
             max_retries=2
         )
@@ -718,7 +719,7 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
 
         return ChatOpenAI(
             model=model,
-            request_timeout=60,
+            timeout=60,
             max_retries=2
         )
 
@@ -733,15 +734,16 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
         model = model_name or "claude-3-5-sonnet-20240620"
 
         return ChatAnthropic(
-            model=model,
-            timeout=60,
-            max_retries=2
-        )
+                model_name=model,
+                timeout=60,
+                stop=None
+            )
 
     # ---------------- DEEPSEEK ----------------
     elif provider == "deepseek":
 
-        if not os.environ.get("DEEPSEEK_API_KEY"):
+        deepseek_key = os.environ.get("DEEPSEEK_API_KEY")
+        if not deepseek_key:
             raise ValueError("DEEPSEEK_API_KEY manquant")
 
         from langchain_openai import ChatOpenAI
@@ -750,16 +752,17 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
 
         return ChatOpenAI(
             model=model,
-            openai_api_key=os.environ.get("DEEPSEEK_API_KEY"),
-            openai_api_base="https://api.deepseek.com/v1",
-            request_timeout=60,
+            api_key=SecretStr(deepseek_key),
+            base_url="https://api.deepseek.com/v1",
+            timeout=60,
             max_retries=2
         )
 
     # ---------------- GROK ----------------
     elif provider == "grok":
 
-        if not os.environ.get("GROK_API_KEY"):
+        grok_key = os.environ.get("GROK_API_KEY")
+        if not grok_key:
             raise ValueError("GROK_API_KEY manquant")
 
         from langchain_openai import ChatOpenAI
@@ -768,16 +771,17 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
 
         return ChatOpenAI(
             model=model,
-            openai_api_key=os.environ.get("GROK_API_KEY"),
-            openai_api_base="https://api.x.ai/v1",
-            request_timeout=60,
+            api_key=SecretStr(grok_key),
+            base_url="https://api.x.ai/v1",
+            timeout=60,
             max_retries=2
         )
 
     # ---------------- OPENROUTER ----------------
     elif provider == "openrouter":
 
-        if not os.environ.get("OPENROUTER_API_KEY"):
+        openrouter_key = os.environ.get("OPENROUTER_API_KEY")
+        if not openrouter_key:
             raise ValueError("OPENROUTER_API_KEY manquant")
 
         from langchain_openai import ChatOpenAI
@@ -799,9 +803,9 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
 
         return ChatOpenAI(
             model=model,
-            openai_api_key=os.environ.get("OPENROUTER_API_KEY"),
-            openai_api_base="https://openrouter.ai/api/v1",
-            request_timeout=60,
+            api_key=SecretStr(openrouter_key),
+            base_url="https://openrouter.ai/api/v1",
+            timeout=60,
             max_retries=2
         )
 
@@ -1077,7 +1081,7 @@ def run(task, component, provider, model, instruction):
         
         # Exécution du graphe
         final_state = initial_state
-        for output in graph_manager.app.stream(initial_state):
+        for output in graph_manager.app.stream(initial_state):  # type: ignore
             for node_name, result in output.items():
                 if result is not None:  # Defensive: ensure node returns a dict
                     final_state.update(result)
@@ -1085,9 +1089,9 @@ def run(task, component, provider, model, instruction):
                     logger.warning(f"⚠️ Node {node_name} returned None instead of dict")
         
         # 5. Ground Truth : vérification réelle sur disque avant validation finale
-        gt_result = manager_etapes.mark_step_as_completed(target_id, synthesis="", project_root=".")
+        gt_result = manager_etapes.mark_step_as_completed(target_id, synthesis="", project_root=".")  # type: ignore
         if isinstance(gt_result, tuple):
-            _, checked_count, total_count = gt_result
+            _, checked_count, total_count = gt_result  # type: ignore
         else:
             checked_count, total_count = 0, 0
         
