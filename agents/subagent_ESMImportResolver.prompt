@@ -26,12 +26,12 @@ Transformer TOUS les imports relatifs TypeScript :
 
 ```typescript
 // ❌ AVANT (génère l'erreur ERR_MODULE_NOT_FOUND en ESM)
-import {{ getUser }} from "../services/user.service"
+import { getUser } from "../services/user.service"
 import Button from "./Button"
 import config from "../../config"
 
 // ✅ APRÈS (fonctionne en ESM)
-import {{ getUser }} from "../services/user.service.js"
+import { getUser } from "../services/user.service.js"
 import Button from "./Button.js"
 import config from "../../config.js"
 ```
@@ -100,11 +100,11 @@ Exemple de fichier modifié :
 
 ```file:backend/src/services/user.service.ts
 // Ancien
-import {{ validateUser }} from \"../validators/user\"
+import { validateUser } from \"../validators/user\"
 import Schema from \"../../config\"
 
 // Nouveau
-import {{ validateUser }} from \"../validators/user.js\"
+import { validateUser } from \"../validators/user.js\"
 import Schema from \"../../config.js\"
 ```
 

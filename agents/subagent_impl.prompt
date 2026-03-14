@@ -576,7 +576,7 @@ Pour tout projet frontend utilisant **Vite** :
 
 Règle 15.2 : IMPORTS CROSS-PROJETS (INTERDIT)
 **INTERDICTION ABSOLUE** d'importer directement des fichiers du `backend/` dans le `frontend/` ou vice versa.
-- ❌ `import {{ IUser }} from '../../../backend/src/models/User.model'`
+- ❌ `import { IUser } from '../../../backend/src/models/User.model'`
 - ✅ Créer une interface locale dans le frontend qui miroir le type backend.
 Les bundlers (Vite, Webpack) ne peuvent pas résoudre ces imports transversaux.
 
@@ -733,7 +733,7 @@ EXEMPLE COMPLET :
 // @SPEC-KIT-TASK: 01_setup
 import express from 'express';
 const app = express();
-export {{ app }};
+export { app };
 ```
 
 RÈGLE 16 : SCRIPT BUILD STANDARD

@@ -171,7 +171,7 @@ export default Layout
 ```
 
 **Checklist** :
-1. Import `ReactNode` si pas déjà fait : `import {{ ReactNode }} from 'react'`
+1. Import `ReactNode` si pas déjà fait : `import { ReactNode } from 'react'`
 2. Créer une `interface ComponentProps {{ children?: ReactNode }}`  
 3. Typer le composant : `const Component: React.FC<ComponentProps> = ({{ children }}) => ...`
 4. Utiliser `export default Component`
@@ -258,7 +258,7 @@ Si le projet est Vue (vérifier `vite.config.ts` et script `vue` dans package.js
 **Problème**: `Property undefined in template` despite being in component
 - Utiliser `<script setup lang="ts">` pour full TypeScript support
 - Typer explicitement : `const count = ref<number>(0)`
-- Imports: `import {{ ref }} from 'vue'`
+- Imports: `import { ref } from 'vue'`
 
 ## vite.config & tsconfig Setup (Vue)
 - **vite.config.ts** doit avoir :
