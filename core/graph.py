@@ -1542,8 +1542,42 @@ export const getDirname = (metaUrl: string) => {
                 
             app_path = self.root / "backend/src/app.ts"
             if not app_path.exists():
-                logger.info("   ↳ Création de backend/src/app.ts")
-                app_path.write_text('console.log("Backend scaffolded");\n', encoding="utf-8")
+                logger.info("   ↳ Création de backend/src/app.ts (template de base)")
+                app_template = '''import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const app = express();
+
+// Middlewares de sécurité et parsing
+app.use(helmet());
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Logging en développement
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
+// Routes (à ajouter)
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'UP', message: 'Backend is healthy!' });
+});
+
+// Gestion des erreurs (à implémenter)
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
+});
+
+export default app;
+'''
+                app_path.write_text(app_template, encoding="utf-8")
                 
         elif target_mod == "frontend":
             os.makedirs(str(self.root / "frontend/src"), exist_ok=True)
@@ -1584,8 +1618,19 @@ export const getDirname = (metaUrl: string) => {
                 
             main_path = self.root / "frontend/src/main.tsx"
             if not main_path.exists():
-                logger.info("   ↳ Création de frontend/src/main.tsx")
-                main_path.write_text('console.log("Frontend scaffolded");\n', encoding="utf-8")
+                logger.info("   ↳ Création de frontend/src/main.tsx (template de base)")
+                main_template = '''import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+'''
+                main_path.write_text(main_template, encoding="utf-8")
                 
         return state
 
