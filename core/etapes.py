@@ -418,6 +418,17 @@ class EtapeManager:
                                 all_ok = False
                                 missing_items.append(item)
                                 continue
+                        
+                        # Skip les clés JSON de package.json (dependencies, devDependencies, etc.)
+                        # Ces keywords ne sont jamais des fichiers ou dépendances à chercher
+                        json_config_keywords = {
+                            'dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies',
+                            'scripts', 'name', 'version', 'type', 'main', 'types', 'exports',
+                            'description', 'author', 'license', 'repository', 'bugs', 'homepage',
+                            'keywords', 'engines', 'files', 'bin', 'man', 'directories', 'config'
+                        }
+                        if item in json_config_keywords:
+                            continue
                                 
                         # Skip les extraits de code JS/TS fréquents (faux positifs pour des fichiers)
                         code_snippets = {

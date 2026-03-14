@@ -488,9 +488,9 @@ class SpecGraphManager:
             "format_instructions": parser.get_format_instructions()
         }
         
-        # Replace placeholders directly
+        # Replace placeholders directly with __ syntax to avoid collision with TypeScript { }
         for key, value in inject_dict.items():
-            placeholder = "{" + key + "}"
+            placeholder = "__" + key.upper() + "__"
             prompt_text = prompt_text.replace(placeholder, str(value))
         
         try:
@@ -788,8 +788,8 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             if is_patch_mode:
                 logger.warning("🔧 MODE PATCH : Lecture du code réel depuis le disque.")
                 existing_snapshot = self._read_existing_code()
-                prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n{feedback_correction}"
-                prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n{existing_code_snapshot}"
+                prompt_text += "\n\n# ⚠️ INSTRUCTIONS DE CORRECTION (RETOUR AUDITEUR) :\n__FEEDBACK_CORRECTION__"
+                prompt_text += "\n\n# 📂 CODE EXISTANT SUR DISQUE (NE PAS TOUT RÉGÉNÉRER) :\n__EXISTING_CODE_SNAPSHOT__"
                 prompt_text += "\n\n# MODE: PATCH — Modifie UNIQUEMENT les fichiers concernés par les erreurs ci-dessus. Ne régénère PAS les fichiers qui fonctionnent."
             
             parser = JsonOutputParser(pydantic_object=SubagentImplOutput)
@@ -850,9 +850,9 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 "format_instructions": format_instructions
             }
             
-            # Replace all placeholders directly
+            # Replace all placeholders directly with __ syntax to avoid collision with TypeScript { }
             for key, value in inject_dict.items():
-                placeholder = "{" + key + "}"
+                placeholder = "__" + key.upper() + "__"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
             # ⚠️ pass directly to model with inline retry
@@ -2079,9 +2079,9 @@ export const getDirname = (metaUrl: string) => {
                 "format_instructions": parser.get_format_instructions()
             }
             
-            # Replace placeholders safely without template parsing
+            # Replace placeholders safely with __ syntax to avoid collision with TypeScript { }
             for key, value in inject_dict.items():
-                placeholder = "{" + key + "}"
+                placeholder = "__" + key.upper() + "__"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
             # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry
@@ -2201,9 +2201,9 @@ export const getDirname = (metaUrl: string) => {
             "format_instructions": parser.get_format_instructions()
         }
         
-        # Replace placeholders directly
+        # Replace placeholders directly with __ syntax to avoid collision with TypeScript { }
         for key, value in inject_dict.items():
-            placeholder = "{" + key + "}"
+            placeholder = "__" + key.upper() + "__"
             prompt_text = prompt_text.replace(placeholder, str(value))
         
         try:
@@ -2316,9 +2316,9 @@ export const getDirname = (metaUrl: string) => {
                 "format_instructions": format_instructions
             }
             
-            # Replace placeholders directly
+            # Replace placeholders directly with __ syntax to avoid collision with TypeScript { }
             for key, value in inject_dict.items():
-                placeholder = "{" + key + "}"
+                placeholder = "__" + key.upper() + "__"
                 prompt_text = prompt_text.replace(placeholder, str(value))
             
             # ⚠️ NO ChatPromptTemplate - pass directly to model with inline retry

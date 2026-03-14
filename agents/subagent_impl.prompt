@@ -11,7 +11,7 @@
 # 2. Cette section force TOUS les fichiers en ES Modules
 # 3. Si tu ignores ESM, le projet entier TOMBERA EN PANNE
 #
-# → Lis attentivement {constitution_content}
+# → Lis attentivement __CONSTITUTION_CONTENT__
 # → Cherche toute mention de "ESM", "type: module", "ES Modules", "ES2022"
 # → Applique ces directives SANS EXCEPTION
 # ==============================================================================
@@ -194,12 +194,12 @@ import Button from "@/components/Button"      // absolu - pas de .js
 
 # MODE PATCH (Activé automatiquement sur correction)
 
-Si tu reçois {existing_code_snapshot}, tu es en MODE PATCH.
+Si tu reçois __EXISTING_CODE_SNAPSHOT__, tu es en MODE PATCH.
 
 En MODE PATCH :
 1. Tu ne dois PAS régénérer le projet entier
-2. Lis les fichiers existants dans {existing_code_snapshot}
-3. Identifie les fichiers mentionnés dans {feedback_correction} et {terminal_diagnostics}
+2. Lis les fichiers existants dans __EXISTING_CODE_SNAPSHOT__
+3. Identifie les fichiers mentionnés dans __FEEDBACK_CORRECTION__ et __TERMINAL_DIAGNOSTICS__
 4. Produis UNIQUEMENT les fichiers qui doivent être modifiés
 5. Ne touche JAMAIS aux fichiers qui fonctionnent correctement
 6. Chaque fichier produit remplace entièrement l'ancien fichier du même chemin
@@ -217,7 +217,7 @@ Chaque fichier doit être présenté comme :
 
 # RÈGLE 0 : PRIORITÉ ABSOLUE AUX ERREURS TERMINAL
 
-Les diagnostics dans {terminal_diagnostics} sont des erreurs RÉELLES
+Les diagnostics dans __TERMINAL_DIAGNOSTICS__ sont des erreurs RÉELLES
 issues de l'exécution du code.
 
 Ils représentent la source de vérité absolue.
@@ -258,29 +258,29 @@ Prends en compte les éléments suivants pour ton développement.
 
 1. CONSTITUTION DU PROJET :
 
-Hash de référence : {constitution_hash}
+Hash de référence : __CONSTITUTION_HASH__
 
-{constitution_content}
+__CONSTITUTION_CONTENT__
 
 2. STATUT D'AVANCEMENT :
 
-Étape en cours : {current_step}
+Étape en cours : __CURRENT_STEP__
 
-Historique technique : {completed_tasks_summary}
+Historique technique : __COMPLETED_TASKS_SUMMARY__
 
-Autres tâches en attente : {pending_tasks}
+Autres tâches en attente : __PENDING_TASKS__
 
 3. PLAN DE L'ANALYSTE (RÉFÉRENCE ABSOLUE) :
 
-{analysis_output}
+__ANALYSIS_OUTPUT__
 
 4. SPÉCIFICATIONS DESIGN (IDENTITÉ VISUELLE) :
 
-{design_spec}
+__DESIGN_SPEC__
 
 # DIAGNOSTICS DU TERMINAL (ERREURS RÉELLES)
 
-{terminal_diagnostics}
+__TERMINAL_DIAGNOSTICS__
 
 # FILE TREE (STRUCTURE RÉELLE DU PROJET)
 
@@ -289,7 +289,7 @@ Voici l'arborescence réelle du projet.
 Utilise-la pour comprendre l'organisation globale
 et éviter de créer des fichiers au mauvais endroit.
 
-{file_tree}
+__FILE_TREE__
 
 # SEMANTIC CODE MAP (STRUCTURE SÉMANTIQUE DU CODE)
 
@@ -306,17 +306,17 @@ Ne devine jamais un chemin si tu peux le vérifier ici.
 - la tâche le demande explicitement
 - ou si c'est nécessaire pour corriger une erreur build
 
-{code_map}
+__CODE_MAP__
 
 # TÂCHE À RÉALISER
 
 Implémente la tâche suivante :
 
-"{target_task}"
+"__TARGET_TASK__"
 
 # INSTRUCTION SUPPLÉMENTAIRE DE L'UTILISATEUR
 
-{user_instruction}
+__USER_INSTRUCTION__
 
 # RÈGLES D'OR (ZÉRO HALLUCINATION)
 
@@ -514,7 +514,7 @@ Règle 11 : CONVENTION DTO / ZOD (STRICTE)
 5.  **EXPRESS HANDLERS & MIDDLEWARE** : Toute fonction gérant une requête (Controller ou Middleware) ne doit JAMAIS retourner une `Response`. Elle doit retourner `Promise<void>` ou `void`. 
   - ✅ Correct: `res.status(200).json(data); return;`
   - ❌ Incorrect: `return res.status(200).json(data);`
-6.  **IMPORTS RÉELS** : Tous les imports de fichiers internes doivent correspondre à des fichiers existants dans la {code_map} ou créés dans cette tâche.
+6.  **IMPORTS RÉELS** : Tous les imports de fichiers internes doivent correspondre à des fichiers existants dans la __CODE_MAP__ ou créés dans cette tâche.
 
 # RÈGLE 12.1 : CLASSIFICATION DES DÉPENDANCES (STRICTE)
 Tu dois classer les paquets NPM avec rigueur :
@@ -624,8 +624,8 @@ TOUT fichier doit commencer par le préfixe du module :
 
 # PHASE OBLIGATOIRE : VALIDATION AVANT SORTIE
 
-1.  **Arborescence** : Vérifie {file_tree}. Ne crée pas de fichiers en dehors de `backend/` ou `frontend/`.
-2.  **Diagnostics** : Analyse {terminal_diagnostics}. Si `TS18003`, corrige `include` en priorité.
+1.  **Arborescence** : Vérifie __FILE_TREE__. Ne crée pas de fichiers en dehors de `backend/` ou `frontend/`.
+2.  **Diagnostics** : Analyse __TERMINAL_DIAGNOSTICS__. Si `TS18003`, corrige `include` en priorité.
 3.  **Command not found** : Si `tsc` ou `jest` manquant, ajoute-le à `devDependencies`.
 
 # CHECKLIST DE VÉRIFICATION
@@ -638,7 +638,7 @@ TOUT fichier doit commencer par le préfixe du module :
 
 # CHECKLIST OBLIGATOIRE
 Les livrables suivants doivent être générés :
-{subtask_checklist}
+__SUBTASK_CHECKLIST__
 Une tâche n'est TERMINÉE que si tous les éléments ci-dessus existent.
 
 # RÈGLE CRITIQUE : TSCONFIG GÉRÉ PAR LE SYSTÈME
