@@ -388,12 +388,10 @@ def init(path, here):
         click.echo("\n🌐 Sélection du modèle OpenRouter :")
 
         openrouter_models = {
-        "1": ("Llama 3.3 70B Instruct (Free)", "meta-llama/llama-3.3-70b-instruct:free"),
-        "2": ("Claude 3 Haiku", "anthropic/claude-3-haiku"),
-        "3": ("Claude 3.5 Sonnet", "anthropic/claude-3.5-sonnet"),
-        "4": ("Grok 2", "x-ai/grok-2"),
-        "5": ("Llama 3 70B (Premium)", "meta-llama/llama-3-70b-instruct"),
-        "6": ("Mixtral 8x7B", "mistralai/mixtral-8x7b")
+        "1": ("Claude 3 Haiku", "anthropic/claude-3-haiku"),
+        "2": ("Claude 3.5 Sonnet", "anthropic/claude-3.5-sonnet"),
+        "3": ("Grok 2", "x-ai/grok-2"),
+        "4": ("Mixtral 8x7B", "mistralai/mixtral-8x7b")
     }
 
         for key, (name, _) in openrouter_models.items():
