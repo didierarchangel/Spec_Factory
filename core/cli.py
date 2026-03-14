@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 import logging
 from dotenv import load_dotenv
+from typing import Optional
 
 # Charger les variables d'environnement (.env)
 # On cherche le .env dans le dossier courant de l'utilisateur (là où il lance la commande)
@@ -369,8 +370,9 @@ def init(path, here):
         for c in choices.split(","):
             c = c.strip()
 
-            if c in available_ais:
-                selected_providers.append(available_ais[c][1])
+            ai_choice = available_ais.get(c)
+            if ai_choice:
+                selected_providers.append(ai_choice[1])
             else:
                 click.echo(f"⚠️ Choix '{c}' invalide.")
 
@@ -496,8 +498,9 @@ def init(path, here):
         "flask": None
     }
     
-    if selected_backend_id in backend_ts_map and backend_ts_map[selected_backend_id]:
-        source = factory_root / "core" / "templates" / "tsconfigs" / backend_ts_map[selected_backend_id]
+    backend_ts_file = backend_ts_map.get(selected_backend_id)
+    if backend_ts_file:
+        source = factory_root / "core" / "templates" / "tsconfigs" / backend_ts_file
         if source.exists():
             # Copie pour le FileManager (vrai Golden Template)
             shutil.copy(str(source), str(templates_dir / "tsconfig.backend.json"))
@@ -665,7 +668,7 @@ def setup_env(path):
     setup_env_logic(target_path)
     click.echo(f"✅ Fichier .env.example créé dans : {target_path.absolute()}")
 
-def get_llm(provider: str = None, model_name: str = None):
+def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None):
     """Factory LLM multi-provider Speckit."""
 
     # Auto-détection depuis .spec-lock.json
@@ -1143,7 +1146,7 @@ def run(task, component, provider, model, instruction):
                 click.echo(f"Raison Checklist : {checked_count}/{total_count} sous-tâches validées")
                 
             # Loguer les erreurs TypeScript brutes pour que l'utilisateur puisse les voir
-            terminal_errors = final_state.get('terminal_diagnostics', '')
+            terminal_errors = str(final_state.get('terminal_diagnostics', ''))
             if terminal_errors and "❌ ÉCHEC" in terminal_errors:
                 click.echo("\n🔍 DÉTAILS DES ERREURS TYPESCRIPT :")
                 click.echo("-" * 40)

@@ -1,5 +1,4 @@
 {
-  "python.defaultInterpreterPath": ".venv/Scripts/python.exe",
   "python.terminal.activateEnvironment": true,
   "python.terminal.activateEnvInCurrentTerminal": true,
   "terminal.integrated.profiles.windows": {
@@ -21,8 +20,5 @@
   "python.formatting.provider": "black",
   "editor.formatOnSave": true,
   "pylance.analysis.typeCheckingMode": "basic",
-  "python.analysis.extraPaths": [
-    "./core",
-    "./utils"
-  ]
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe"
 }
