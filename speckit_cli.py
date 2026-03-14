@@ -297,7 +297,10 @@ GOOGLE_API_KEY=votre_cle_ici
 # Anthropic (Claude)
 ANTHROPIC_API_KEY=votre_cle_ici
 
-# OpenAI (GPT / Copilot)
+# OpenAI (GPT)
+OPENAI_API_KEY=votre_cle_ici
+
+# CODEX-CLI (GPT)
 OPENAI_API_KEY=votre_cle_ici
 """
     env_example_path.write_text(content, encoding="utf-8")
