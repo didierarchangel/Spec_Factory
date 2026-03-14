@@ -588,6 +588,8 @@ build/
 """
         gitignore_path.write_text(gitignore_content, encoding="utf-8")
         click.echo("✅ Fichier `.gitignore` par défaut créé.")
+        click.echo("\n✨ Projet initialisé avec succès!")
+        click.echo("👉 Prochaine étape : `speckit specify \"Voici mon projet pour une application ...\"`")
 
 
 def setup_env_logic(target_path: Path):
