@@ -104,11 +104,10 @@ def init(path, here):
     # Sélection interactive des IA (Style GitHub Spec-Kit)
     click.echo("\n🤖 Configuration des IA partenaires (Sélectionnez une ou plusieurs) :")
     available_ais = {
-        "1": ("Gemini-Cli", "google"),
-        "2": ("Claude", "anthropic"),
-        "3": ("GitHub Copilot", "copilot"),
-        "4": ("Codex-Cli", "openai"),
-        "5": ("Gemini 2.5 Flash (Rapide)", "google-flash")
+        
+        "1": ("Claude", "anthropic"),
+        "2": ("Codex-Cli", "openai"),
+        "3": ("Gemini 2.5 Flash (Rapide)", "google-flash")
     }
     
     selected_providers = []
@@ -117,7 +116,7 @@ def init(path, here):
             click.echo(f" {key}) {name}")
         
         choices = click.prompt(
-            "Entrez les numéros séparés par une virgule (ex: 1,2,4)",
+            "Entrez les numéros séparés par une virgule (ex: 1,2,3)",
             default="1",
             type=str
         )
@@ -290,18 +289,16 @@ def setup_env_logic(target_path: Path):
 # Ajoutez vos clés API ici pour activer les IA
 # NE JAMAIS COMMITTER VOTRE VRAI FICHIER .env (il est dans le .gitignore)
 
-# Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite)
-# Get one at https://aistudio.google.com/app/apikey
-GOOGLE_API_KEY=votre_cle_ici
-
 # Anthropic (Claude)
 ANTHROPIC_API_KEY=votre_cle_ici
 
-# OpenAI (GPT)
-OPENAI_API_KEY=votre_cle_ici
 
 # CODEX-CLI (GPT)
 OPENAI_API_KEY=votre_cle_ici
+
+# Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro)
+# Get one at https://aistudio.google.com/app/apikey
+GOOGLE_API_KEY=AIzaSyDMf3P_X1FOoHBkERkRJjYiK-KxdQQym4Q
 """
     env_example_path.write_text(content, encoding="utf-8")
     
