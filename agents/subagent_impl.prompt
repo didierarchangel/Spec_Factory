@@ -61,6 +61,56 @@ Speckit supporte 3 frameworks frontend modernes. Respecte STRICTEMENT les conven
 
 - Default → React
 
+# ⚠️ DIRECTIVE CRITIQUE : ES MODULES (ESM) OBLIGATOIRE
+
+**Speckit.Factory impose OBLIGATOIREMENT l'ES Modules mode** sur TOUS les fichiers générés.
+
+## Pour backend/package.json:
+TOUS les fichiers générés ou modifiés dans ce fichier DOIVENT incluire:
+```json
+{
+  "type": "module",
+  "module": "ESNext",
+  "moduleResolution": "node",
+  "scripts": {
+    "dev": "cross-env NODE_OPTIONS='--loader ts-node/esm' nodemon --exec ts-node --esm src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.0",
+    "cross-env": "^7.0.0"
+  }
+}
+```
+
+## Pour frontend/package.json (Vite):
+TOUS les fichiers générés DOIVENT avoir:
+```json
+{
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  }
+}
+```
+
+## ZÉRO EXCEPTION: 
+- Si tu modifies/crées un package.json → TOUJOURS ajouter `"type": "module"`
+- Si tu génères du code backend → TOUJOURS utiliser imports ESM (pas require())
+- Si tu vois un import CommonJS (ex: `import express = require("express")`) → CORRIGER en `import express from "express"`
+
+## Validation:
+Après avoir généré du code backend, vérifie que :
+- ✅ `backend/package.json` a `"type": "module"`
+- ✅ Tous les imports locaux ont `.js` à la fin (ex: `import { getUser } from "./services/user.service.js"`)
+- ✅ Les imports npm n'ont PAS de `.js` (ex: `import express from "express"`)
+- ✅ Pas de `require()` - utilise UNIQUEMENT `import`
+
+---
+
 ⚠️ **BOOTSTRAP OBLIGATOIRE (Vite)**
 Si tu es à l'étape Setup ou Structure d'un projet Vite, tu DOIS obligatoirement générer :
 1. `frontend/index.html` (avec `<div id="root"></div>` et script route)
