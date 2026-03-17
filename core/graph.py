@@ -142,6 +142,11 @@ class AgentState(TypedDict):
     snapshot_before: dict  # Project state before persistence
     snapshot_after: dict  # Project state after persistence
     file_diff: dict  # Diff summary between snapshots
+    
+    # Infinite loop detection tracking
+    previous_node_route: str = ""  # Track which node was just executed
+    state_history: List[str] = None  # History of (node_name, validation_status) pairs
+    repeated_state_count: int = 0  # Count of consecutive repeated states
 
 
 class SpecGraphManager:
@@ -2242,89 +2247,53 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             return state  # type: ignore[return-value]
 
     def task_enforcer_node(self, state: AgentState) -> dict:
-        """Nœud de vérification structurelle."""
-        logger.info("🛡️ Vérification structurelle (TaskEnforcer)...")
-        prompt_text = self._load_prompt("subagent_Speckit-TaskEnforcer.prompt")
-        parser = JsonOutputParser(pydantic_object=SubagentTaskEnforcerOutput)
+        """Nœud de vérification structurelle DÉTERMINISTE (sans LLM)."""
+        logger.info("🛡️ Vérification structurelle (TaskEnforcer - MODE DÉTERMINISTE)...")
         
-        # 🛡️ SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement les variables
-        inject_dict = {
-            "subtask_checklist": state.get("subtask_checklist", ""),
-            "file_tree": state.get("file_tree", ""),
-            "format_instructions": parser.get_format_instructions()
-        }
+        # 🛡️ PRIORITÉ 2: Source de vérité = filesystem réel vs checklist
+        # Ne PAS utiliser le LLM pour identifier les fichiers manquants!
         
-        # Replace placeholders directly with __ syntax to avoid collision with TypeScript { }
-        for key, value in inject_dict.items():
-            placeholder = "__" + key.upper() + "__"
-            prompt_text = prompt_text.replace(placeholder, str(value))
+        # 1. Extraire la checklist depuis le subtask_checklist
+        checklist = state.get("subtask_checklist", "")
+        file_tree = state.get("file_tree", "")
         
-        try:
-            from langchain_core.messages import HumanMessage
-            
-            final_prompt = "You are a helpful assistant.\n\n" + prompt_text
-            message = HumanMessage(content=final_prompt)
-            
-            # Direct invocation with retry logic
-            raw_output = None
-            for attempt in range(3):
-                try:
-                    logger.info(f"🔄 Invocation LLM (tentative {attempt + 1}/3)...")
-                    raw_output = (self.model | StrOutputParser()).invoke([message])
-                    logger.info(f"✅ Invocation réussie à la tentative {attempt + 1}")
-                    break
-                except Exception as e:
-                    if attempt < 2:
-                        wait_time = 2 ** attempt
-                        logger.warning(f"⚠️ Tentative {attempt + 1} échouée : {str(e)[:100]}. Attente {wait_time}s avant retry...")
-                        time.sleep(wait_time)
-                    else:
-                        logger.error(f"❌ Toutes les 3 tentatives ont échoué.")
-                        raise
-            
-            assert raw_output is not None, "LLM output should not be None after retry loop"
-            result = self._safe_parse_json(raw_output, SubagentTaskEnforcerOutput)
-            
-            # ──────── POST-PROCESSING: Vérifier les fichiers manquants en Python ────────
-            # Parfois l'IA retourne juste le nom du fichier ("HomePage.tsx")
-            # au lieu du chemin complet ("frontend/src/pages/HomePage.tsx").
-            # On fait une vérification robuste en Python avant de marquer comme manquant.
-            
-            file_tree_str = state.get("file_tree", "")
-            file_tree_list = file_tree_str.split('\n') if file_tree_str else []
-            
-            verified_missing = []
-            for missing_file in result.get("missing_files", []):
-                # Ignorer les fausses détections d'URL par le LLM (identiques au filtre dans etapes.py)
-                if missing_file.startswith('/api/') or ('/' in missing_file and not missing_file.endswith((".ts", ".js", ".tsx", ".jsx", ".json", ".md", ".yml", ".yaml")) and not missing_file.endswith('/')):
-                    logger.info(f"⏭️ Ignore faux positif (URL/Concept): {missing_file}")
-                    continue
-                
-                # Essayer 3 niveaux de correspondance
-                if self._file_exists_in_tree(missing_file, file_tree_list):
-                    logger.info(f"✅ Fichier trouvé après post-processing: {missing_file}")
-                    # Le fichier existe vraiment, ne pas le marquer comme manquant
-                else:
-                    logger.warning(f"❌ Fichier manquant confirmé: {missing_file}")
-                    verified_missing.append(missing_file)
-            
-            # Mettre à jour le résultat avec les vraiment manquants
-            result["missing_files"] = verified_missing
-            result["missing_tasks"] = len(verified_missing)
-            
-            if len(verified_missing) == 0:
-                return {"validation_status": "STRUCTURE_OK"}
-            else:
-                return {
-                    "validation_status": "STRUCTURE_KO",
-                    "feedback_correction": f"MANQUANT: {', '.join(verified_missing)}",
-                    "error_count": state.get("error_count", 0) + 1
-                }
-        except Exception as e:
+        # 2. Parser les fichiers attendus depuis la checklist
+        expected_files = set()
+        for line in checklist.split('\n'):
+            # Chercher les patterns comme "backend/src/app.ts", "frontend/package.json"
+            import re as regex
+            matches = regex.findall(r'[`\'"]?([a-zA-Z0-9\/_\-\.]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md))[`\'"]?', line)
+            expected_files.update(matches)
+        
+        logger.info(f"📋 Fichiers attendus selon la checklist: {len(expected_files)}")
+        
+        # 3. Extraire les fichiers réellement présents depuis file_tree
+        real_files = set()
+        for line in file_tree.split('\n'):
+            line = line.strip()
+            if line and not line.startswith('│') and not line.startswith('└') and '/' in line:
+                # Nettoyer les caractères de visualisation
+                clean_path = regex.sub(r'^[\s│└─]*', '', line).strip()
+                if '.' in clean_path and any(clean_path.endswith(ext) for ext in ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.md']):
+                    real_files.add(clean_path)
+        
+        logger.info(f"📂 Fichiers détectés dans file_tree: {len(real_files)}")
+        
+        # 4. Calculer la différence (DÉTERMINISTE, pas LLM)
+        missing_files = expected_files - real_files
+        
+        if missing_files:
+            logger.warning(f"❌ {len(missing_files)} fichiers manquants détectés:")
+            for f in sorted(missing_files):
+                logger.warning(f"   - {f}")
             return {
                 "validation_status": "STRUCTURE_KO",
-                "feedback_correction": str(e)
+                "missing_files": list(missing_files),
+                "feedback_correction": f"MANQUANT: {', '.join(sorted(missing_files))}"
             }
+        else:
+            logger.info(f"✅ Tous les fichiers attendus sont présents ({len(expected_files)} fichiers)")
+            return {"validation_status": "STRUCTURE_OK"}
 
     def code_map_node(self, state: AgentState) -> dict:
         """Nœud de génération de la Semantic Code Map."""
@@ -3124,6 +3093,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         - TEST_LIBS filter: ignore les modules de test halluciner
         - dep_attempts: limite des tentatives d'installation des dépendances
         - error_count: limite des essais de correction
+        - state_history: détecte les boucles infinies (même état répété)
         """
         
         # 🛡️ PROTECTION NIVEAU 1: Limite globale des cycles du graphe
@@ -3135,20 +3105,65 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         state["graph_steps"] = graph_steps + 1
         logger.debug(f"📊 Graph step {state['graph_steps']}/{MAX_GRAPH_STEPS}")
         
+        # 🛡️ PROTECTION NIVEAU 1B: Détection de boucle infinie (même état répété)
+        current_state_key = f"{state.get('validation_status', 'UNKNOWN')}|{len(state.get('missing_modules', []))}|{state.get('error_count', 0)}"
+        if state.get("state_history") is None:
+            state["state_history"] = []
+        
+        state_history = state["state_history"]
+        if state_history and state_history[-1] == current_state_key:
+            repeats = state.get("repeated_state_count", 0) + 1
+            state["repeated_state_count"] = repeats
+            logger.warning(f"🔄 État répétitif détecté #{repeats}: {current_state_key}")
+            
+            # Après 2 répétitions du même état (3 occurrences), abort
+            if repeats >= 2:
+                logger.error(f"🛑 PRIORITÉ 3 FIX: Boucle infinie détectée (état répété {repeats+1} fois). Abort vers verify_node.")
+                return "verify_node"
+        else:
+            state["repeated_state_count"] = 0
+        
+        state_history.append(current_state_key)
+        # Garder seulement les 10 derniers états pour mémoire
+        if len(state_history) > 10:
+            state_history.pop(0)
+        state["state_history"] = state_history
+        
         # ─────────────────────────────────────────────────────────────
         
-        # 🔴 PROTECTION ARCHITECTURALE: TOOLS > LLM
-        # Si le scanner (outil fiable) dit 0 modules manquants,
-        # on ignore ce que le LLM/diagnostic dit (peut halluciner)
+        # �️ PROTECTION ARCHITECTURALE: PRIORITÉ 4 FIX
+        # Hiérarchie de vérité stricte: SCANNER > NPM > LLM
+        # 1. SCANNER: Vérité absolue (file_tree, filesystem scans)
+        # 2. NPM: Source primaire (package.json, node_modules, npm ls)
+        # 3. LLM: Source secondaire (peut halluciner, bugs, obsol imports)
+        
         scanner_missing = state.get("scanner_missing_modules", [])
+        npm_missing = state.get("npm_report_missing", [])  # from npm diagnostic
         llm_missing = state.get("missing_modules", [])
         
-        if not scanner_missing and llm_missing:
-            # Le scanner contredit le LLM
-            logger.info(f"🧠 SCANNER > LLM: Scanner confirme 0 modules, LLM signale {llm_missing}. Ignoré.")
-            logger.info(f"   (Les modules halluciner sont probablement obsolètes ou non-utilisés)")
+        logger.debug(f"📊 Hiérarchie verfication de depend: scanner={scanner_missing}, npm={npm_missing}, llm={llm_missing}")
+        
+        # NIVEAU 1: SCANNER > NPM (Si scanner dit 0, ignorer npm)
+        if not scanner_missing and npm_missing:
+            logger.info(f"🔍 SCANNER > NPM: Scanner confirme 0 modules, NPM signale {npm_missing}. Voix conflictante => relance npm diagnostic.")
+            # Ne pas ignorer complètement, mais signaler pour debug future
+            npm_missing = []
+        
+        # NIVEAU 2: (SCANNER + NPM) > LLM
+        effective_missing = list(set(scanner_missing or []) | set(npm_missing or []))
+        
+        if not effective_missing and llm_missing:
+            # Le LLM contredit le scanner + npm
+            logger.info(f"🧠 (SCANNER+NPM) > LLM: Tools confirment 0 modules, LLM signale {llm_missing}. Probablement hallucination.")
+            logger.info(f"   (modules halluciner: {llm_missing} - ignorés car non-détectés par scanner/npm)")
             state["missing_modules"] = []
             llm_missing = []
+        elif llm_missing and effective_missing:
+            # LLM propose davantage que tools
+            superset_from_llm = set(llm_missing) - set(effective_missing)
+            if superset_from_llm:
+                logger.info(f"⚠️ LLM propose modules non-confirmes par tools: {list(superset_from_llm)}. En suspicion.")
+                llm_missing = list(set(llm_missing) & set(effective_missing))  # Intersection seulement
         
         # 🛡️ Filtrer les modules de test (hallucinations classiques du LLM)
         TEST_LIBS = {
@@ -3195,14 +3210,15 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             return "verify_node"
             
         if has_missing_modules:
-            # Protection contre les boucles infinies de dépendances
+            # 🛡️ PRIORITÉ 1: Casser la boucle structurelle immédiatement
+            # Après 1 tentative échouée d'installation, déléguer à verify_node
             dep_attempts = state.get("dep_attempts", 0)
-            if dep_attempts < 3:
-                logger.warning(f"📦 Modules manquants détectés {llm_missing}. Auto-installation ({dep_attempts+1}/3).")
-                return "install_deps_node"
+            if dep_attempts >= 1:
+                logger.error(f"🛑 ABORT: Tentative d'installation des dépendances #{dep_attempts} a échoué. Boucle détectée. Route vers verify_node.")
+                return "verify_node"
             else:
-                logger.error(f"⚠️ Auto-installation a échoué 3 fois pour {llm_missing}. Délégation à l'IA.")
-                pass
+                logger.warning(f"📦 Modules manquants détectés {llm_missing}. Tentative d'auto-installation (1/1).")
+                return "install_deps_node"
             
         if has_structure_errors:
             logger.warning("🔨 Échec de validation structurelle : route vers verify_node pour avorter.")
