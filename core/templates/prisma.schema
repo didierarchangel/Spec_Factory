@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 👤 USER MODEL - Exemple d'un modèle pour l'authentification
+// ============================================================
+
+model User {
+  id    Int     @id @default(autoincrement())
+  email String  @unique
+  name  String?
+  password String // À hasher avec bcryptjs
+  role  String  @default("user") // user, admin, moderator
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  posts Post[]
+  profile Profile?
+}
+
+model Profile {
+  id     Int     @id @default(autoincrement())
+  bio    String?
+  avatar String?
+  userId Int     @unique
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// 📝 POST MODEL - Exemple avec relations
+// ============================================================
+
+model Post {
+  id    Int     @id @default(autoincrement())
+  title String
+  content String
+  published Boolean @default(false)
+  viewCount Int @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  userId Int
+  author User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  comments Comment[]
+  tags Tag[]
+}
+
+model Comment {
+  id    Int     @id @default(autoincrement())
+  text  String
+  createdAt DateTime @default(now())
+  
+  postId Int
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model Tag {
+  id    Int     @id @default(autoincrement())
+  name  String  @unique
+  
+  posts Post[]
+}
+
+// ============================================================
+// 💡 GUIDE D'UTILISATION
+// ============================================================
+
+/*
+1. CRÉER UNE MIGRATION APRÈS MODIFICATION :
+   npm run prisma:migrate
+
+2. APPLIQUER LES MIGRATIONS EN PRODUCTION :
+   npm run prisma:deploy
+
+3. VISUALISER LA BD EN GUI :
+   npm run prisma:studio
+
+4. UTILISER DANS LE CODE :
+   import { PrismaClient } from '@prisma/client'
+   const prisma = new PrismaClient()
+   
+   // Créer un utilisateur
+   const user = await prisma.user.create({
+     data: { email: "test@example.com", name: "Test" }
+   })
+   
+   // Récupérer tous les utilisateurs
+   const users = await prisma.user.findMany()
+   
+   // Mettre à jour
+   await prisma.user.update({
+     where: { id: 1 },
+     data: { name: "Updated" }
+   })
+   
+   // Supprimer
+   await prisma.user.delete({ where: { id: 1 } })
+
+5. NE PAS OUBLIER :
+   - Fermer la connexion Prisma quand l'app s'arrête
+   - Utiliser Prisma Client comme singleton
+   - Hasher les mots de passe avec bcryptjs
+*/

@@ -68,8 +68,32 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 * **Langage** : Node.js 20, TypeScript (Configuration : ES Modules, Target: ES2022)
 * **TypeScript** : Oui. Un fichier `tsconfig.json` DOIT impérativement être présent à la racine du dossier `/backend`.
 * **Framework Core** : [Ex: Express, NestJS, Fastify]
-* **Base de données** : [Ex: MongoDB via Mongoose, PostgreSQL 16 via Prisma]
+* **Base de données** : (Sélectionner UNE SEULE option, mutuelle exclusion)
+    - **Option A: MongoDB (NoSQL)** : MongoDB 6+ via Mongoose (^8.0.0). *Scripts npm* : Aucun script Prisma.
+    - **Option B: PostgreSQL Local (SQL)** : PostgreSQL 16+ via Prisma (5.13.0). *Scripts npm requis* : `prisma:generate`, `prisma:migrate`, `prisma:setup` (voir package.json).
+    - **Option C: Supabase (PostgreSQL Cloud)** : PostgreSQL 16+ (cloud-managed) via Prisma (5.13.0). *Scripts npm requis* : `prisma:generate`, `prisma:migrate`, `prisma:setup`.
+* **Scripts npm (Backend)** :
+    ```json
+    {
+      "scripts": {
+        "dev": "cross-env NODE_OPTIONS='--loader ts-node/esm' nodemon --exec ts-node --esm src/app.ts",
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "prisma:generate": "prisma generate",
+        "prisma:migrate": "prisma migrate dev",
+        "prisma:setup": "prisma generate && prisma migrate dev --name init"
+      }
+    }
+    ```
+    **NOTES** :
+    - `prisma:setup` **NE DOIT être utilisé que pour la première initialisation** d'une BD PostgreSQL/Supabase.
+    - Pour MongoDB, les scripts Prisma ne sont pas applicables.
+    - La clé `prisma:*` ne doit exister que si PostgreSQL ou Supabase est sélectionné.
 * **Authentification** : [Ex: JWT, Passport.js, NextAuth]
+* **Configuration .env (Backend)** :
+    - **Si MongoDB** : `MONGODB_URI`, `JWT_SECRET`, `NODE_ENV`, `PORT`
+    - **Si PostgreSQL Local** : `DATABASE_URL`, `JWT_SECRET`, `NODE_ENV`, `PORT` (optionnels : `DB_HOST`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`)
+    - **Si Supabase** : `DATABASE_URL` (format Supabase), `SUPABASE_PROJECT_ID`, `SUPABASE_API_KEY`, `SUPABASE_URL`, `JWT_SECRET`, `NODE_ENV`, `PORT`
 
 ### 1.2 Frontend (Si applicable)
 * **Langage** : TypeScript (Configuration : ES Modules, Target: ES2022)

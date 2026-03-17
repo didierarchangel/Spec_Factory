@@ -48,53 +48,103 @@ DEFAULT_PROJECT_NAME = "SpecKit-App"
 # 🔧 ROUTEURS BACKEND & FRONTEND (GÉNÉRATEURS)
 # ============================================================
 
-def generate_express_project(target_path: Path):
-    """Génère la structure de base pour Express.js."""
-    backend_path = target_path / "backend"
-    src_path = backend_path / "src"
-    src_path.mkdir(parents=True, exist_ok=True)
-    
-    package_json = {
-        "name": "backend-express",
+# 🗄️ Configurations de Package.json par base de données
+def get_express_package_json(db_type: str = "mongodb") -> dict:
+    """Génère le package.json Express selon le type de BD."""
+    base_config = {
+        "name": "backend",
         "version": "1.0.0",
+        "description": "Backend for Project Application",
+        "main": "dist/app.js",
         "type": "module",
-        "main": "dist/index.js",
         "scripts": {
-            "dev": "node --loader tsx --watch src/index.ts",
+            "dev": "cross-env NODE_OPTIONS='--loader ts-node/esm' nodemon --exec ts-node --esm src/app.ts",
             "build": "tsc",
-            "start": "node dist/index.js"
+            "start": "node dist/index.js",
+            "lint": "eslint . --ext .ts",
+            "format": "prettier --write \"src/**/*.ts\"",
+            "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest"
         },
+        "keywords": [],
+        "author": "",
+        "license": "ISC",
         "dependencies": {
-            "express": "^4.18.0",
-            "cors": "^2.8.5",
-            "dotenv": "^16.0.0"
+            "cors": "2.8.5",
+            "dotenv": "16.4.5",
+            "express": "4.18.2",
+            "helmet": "7.1.0",
+            "jsonwebtoken": "9.0.2",
+            "morgan": "1.10.0",
+            "zod": "3.22.4",
+            "bcryptjs": "2.4.3"
         },
         "devDependencies": {
-            "typescript": "^5.0.0",
-            "tsx": "^3.12.0",
-            "@types/node": "^20.0.0",
-            "@types/express": "^4.17.0"
+            "@types/cors": "2.8.17",
+            "@types/express": "4.17.21",
+            "@types/jest": "29.5.12",
+            "@types/jsonwebtoken": "9.0.6",
+            "@types/morgan": "1.9.9",
+            "@types/node": "20.12.12",
+            "@types/supertest": "6.0.2",
+            "@typescript-eslint/eslint-plugin": "8.57.0",
+            "@typescript-eslint/parser": "8.57.0",
+            "cross-env": "7.0.3",
+            "eslint": "8.57.0",
+            "eslint-config-prettier": "9.1.0",
+            "eslint-plugin-prettier": "5.1.3",
+            "jest": "29.7.0",
+            "nodemon": "3.1.0",
+            "prettier": "3.2.5",
+            "supertest": "6.3.4",
+            "ts-jest": "29.1.2",
+            "ts-node": "^10.9.0",
+            "typescript": "5.4.5"
         }
     }
     
-    (backend_path / "package.json").write_text(json.dumps(package_json, indent=2))
-    (src_path / "index.ts").write_text("import express from 'express';\nconst app = express();\napp.listen(5000);\n")
-    click.echo("✅ Projet Express configuré")
+    # Ajouter les dépendances spécifiques à la BD
+    if db_type in ["postgresql", "supabase"]:
+        base_config["dependencies"]["@prisma/client"] = "5.13.0"
+        base_config["devDependencies"]["prisma"] = "5.13.0"
+        base_config["scripts"]["prisma:generate"] = "prisma generate"
+        base_config["scripts"]["prisma:migrate"] = "prisma migrate dev"
+        base_config["scripts"]["prisma:setup"] = "prisma generate && prisma migrate dev --name init"
+        base_config["scripts"]["prisma:studio"] = "prisma studio"
+    elif db_type == "mongodb":
+        base_config["dependencies"]["mongoose"] = "^8.0.0"
+        base_config["dependencies"]["mongodb"] = "^6.0.0"
+    
+    return base_config
 
-def generate_nestjs_project(target_path: Path):
-    """Génère la structure de base pour NestJS."""
+def generate_express_project(target_path: Path, db_type: str = "mongodb"):
+    """Génère la structure de base pour Express.js avec support BD."""
     backend_path = target_path / "backend"
     src_path = backend_path / "src"
     src_path.mkdir(parents=True, exist_ok=True)
     
+    package_json = get_express_package_json(db_type)
+    
+    (backend_path / "package.json").write_text(json.dumps(package_json, indent=2))
+    (src_path / "index.ts").write_text("import express from 'express';\nconst app = express();\napp.listen(5000);\n")
+    click.echo(f"✅ Projet Express configuré (BD: {db_type})")
+
+def generate_nestjs_project(target_path: Path):
+    """Génère la structure de base pour NestJS (100% ESM)."""
+    backend_path = target_path / "backend"
+    src_path = backend_path / "src"
+    src_path.mkdir(parents=True, exist_ok=True)
+    
+    # ✅ CONFIGURATION ESM POUR NESTJS
     package_json = {
         "name": "backend-nestjs",
         "version": "1.0.0",
+        "type": "module",  # ✅ ESM obligatoire
         "main": "dist/main.js",
         "scripts": {
-            "dev": "nest start --watch",
+            "dev": "cross-env NODE_OPTIONS='--loader ts-node/esm' nest start --watch",
             "build": "nest build",
-            "start": "node dist/main.js"
+            "start": "node dist/main.js",
+            "lint": "eslint . --ext .ts"
         },
         "dependencies": {
             "@nestjs/common": "^10.0.0",
@@ -105,13 +155,40 @@ def generate_nestjs_project(target_path: Path):
         },
         "devDependencies": {
             "@nestjs/cli": "^10.0.0",
-            "typescript": "^5.0.0"
+            "@nestjs/schematics": "^10.0.0",
+            "@type-fest/package": "^0.20.0",
+            "typescript": "^5.0.0",
+            "@types/node": "^20.0.0",
+            "ts-node": "^10.9.0",
+            "cross-env": "^7.0.0"
         }
     }
     
     (backend_path / "package.json").write_text(json.dumps(package_json, indent=2))
-    (src_path / "main.ts").write_text("import { NestFactory } from '@nestjs/core';\n\nasync function bootstrap() {\n  const app = await NestFactory.create(AppModule);\n  await app.listen(3000);\n}\nbootstrap();\n")
-    click.echo("✅ Projet NestJS configuré")
+    
+    # ✅ Fichier main.ts en ESM
+    main_ts = """/**
+ * NestJS Main Entry Point (ESM)
+ * Import: utilise la syntaxe ESM avec extensions '.js'
+ */
+
+import { NestFactory } from '@nestjs/core'
+import { AppModule } from './app.module.js'
+
+async function bootstrap() {
+    const app = await NestFactory.create(AppModule)
+    const port = process.env.PORT || 3000
+    await app.listen(port)
+    console.log(`✅ NestJS app listening on port ${port}`)
+}
+
+bootstrap().catch(err => {
+    console.error('❌ Erreur au démarrage:', err)
+    process.exit(1)
+})
+"""
+    (src_path / "main.ts").write_text(main_ts)
+    click.echo("✅ Projet NestJS configuré (ESM + TypeScript)")
 
 def generate_fastapi_project(target_path: Path):
     """Génère la structure pour FastAPI (Python)."""
@@ -258,9 +335,9 @@ def generate_vue_vite_project(target_path: Path):
     (src_path / "App.vue").write_text("<template><h1>Vue + Vite</h1></template>\n")
     click.echo("✅ Projet Vue.js (Vite) configuré")
 
-# 🗺️ Mappings des générateurs
+# 🗺️ Mappings des générateurs (mise à jour pour supporter BD parameter)
 BACKEND_GENERATORS = {
-    "express": generate_express_project,
+    "express": lambda target_path, db: generate_express_project(target_path, db),
     "nestjs": generate_nestjs_project,
     "fastapi": generate_fastapi_project,
     "flask": generate_flask_project
@@ -463,6 +540,21 @@ def init(path, here):
     selected_backend_id, selected_backend_label = backend_choices[b_choice]
     
     # ============================================================
+    # �️ SÉLECTION BASE DE DONNÉES
+    # ============================================================
+    database_choices = {
+        "1": ("mongodb", "MongoDB (NoSQL - Flexible)"),
+        "2": ("postgresql", "PostgreSQL Local (SQL Relational)"),
+        "3": ("supabase", "Supabase (PostgreSQL Cloud)")
+    }
+    
+    click.echo("\n--- Base de Données ---")
+    for k, v in database_choices.items():
+        click.echo(f" {k}) {v[1]}")
+    db_choice = click.prompt("Votre choix de Base de Données", default="1", type=click.Choice(list(database_choices.keys())))
+    selected_database_id, selected_database_label = database_choices[db_choice]
+    
+    # ============================================================
     # 🚀 APPELS AUX GÉNÉRATEURS (via MAPPINGS)
     # ============================================================
     click.echo("\n🔧 Initialisation des structures de projet...")
@@ -470,9 +562,12 @@ def init(path, here):
     # Création de l'arborescence de base
     if selected_backend_id != "none":
         (target_path / "backend" / "src").mkdir(parents=True, exist_ok=True)
-        # Appel du générateur Backend via le mapping
+        # Appel du générateur Backend via le mapping avec paramètre BD
         if selected_backend_id in BACKEND_GENERATORS:
-            BACKEND_GENERATORS[selected_backend_id](target_path)
+            if selected_backend_id == "express":
+                BACKEND_GENERATORS[selected_backend_id](target_path, selected_database_id)
+            else:
+                BACKEND_GENERATORS[selected_backend_id](target_path)
 
     if selected_frontend_id != "none":
         (target_path / "frontend" / "src").mkdir(parents=True, exist_ok=True)
@@ -510,7 +605,7 @@ def init(path, here):
             click.echo("✅ `backend/tsconfig.json` initialisé.")
             
             # --- Nouveau : Configuration .env du Backend ---
-            setup_backend_env_logic(target_path, selected_backend_id)
+            setup_backend_env_logic(target_path, selected_backend_id, selected_database_id)
 
     # 2. Injection du Frontend Template
     frontend_ts_map = {
@@ -551,7 +646,8 @@ def init(path, here):
         "stack_preferences": {
             "backend": selected_backend_id,
             "frontend": selected_frontend_id,
-            "design": selected_design
+            "design": selected_design,
+            "database": selected_database_id
         }
     }
 
@@ -624,25 +720,62 @@ OPENROUTER_API_KEY=votre_cle_ici
     if not env_path.exists():
         env_path.write_text(content, encoding="utf-8")
 
-def setup_backend_env_logic(target_path: Path, backend_id: str):
-    """Crée un fichier .env spécifique au backend sélectionné."""
+def setup_backend_env_logic(target_path: Path, backend_id: str, db_type: str = "mongodb"):
+    """Crée un fichier .env spécifique au backend et à la BD sélectionnée."""
     backend_env_path = target_path / "backend" / ".env"
     backend_env_example_path = target_path / "backend" / ".env.example"
     
-    # Template par défaut (Node.js / MongoDB)
-    content = """# 💻 Backend Configuration
+    # Template par défaut selon la BD
+    if db_type == "mongodb":
+        content = """# 💻 Backend Configuration - MongoDB
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/mon_projet
 JWT_SECRET=super_secret_key_à_changer_en_production
 NODE_ENV=development
 """
-    
-    # Déterminer le type (Python ou Node) basé sur l'ID
-    if backend_id in ["fastapi", "flask"]:
-        content = """# 🐍 Python Backend Configuration
+    elif db_type == "postgresql":
+        content = """# 💻 Backend Configuration - PostgreSQL Local
+PORT=5000
+DATABASE_URL=postgresql://postgres:PASSWORD@localhost:5432/drugstoredb
+JWT_SECRET=super_secret_key_à_changer_en_production
+NODE_ENV=development
+DATABASE_TYPE=postgres
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=PASSWORD
+DB_NAME=drugstoredb
+"""
+    elif db_type == "supabase":
+        content = """# 💻 Backend Configuration - Supabase (PostgreSQL Cloud)
+PORT=5000
+DATABASE_URL=postgresql://postgres.PROJECT_ID:PASSWORD@db.PROJECT_ID.supabase.co:5432/postgres
+JWT_SECRET=super_secret_key_à_changer_en_production
+NODE_ENV=production
+DATABASE_TYPE=postgres
+DB_HOST=db.PROJECT_ID.supabase.co
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=PASSWORD
+DB_NAME=postgres
+SUPABASE_PROJECT_ID=PROJECT_ID
+SUPABASE_API_KEY=your_supabase_api_key
+SUPABASE_URL=https://PROJECT_ID.supabase.co
+"""
+    else:
+        # Fallback Node.js / MongoDB (Python pour FastAPI/Flask)
+        if backend_id in ["fastapi", "flask"]:
+            content = """# 🐍 Python Backend Configuration
 DATABASE_URL=sqlite:///./sql_app.db
 SECRET_KEY=votre_cle_secrete_python
 DEBUG=True
+"""
+        else:
+            content = """# 💻 Backend Configuration
+PORT=5000
+MONGODB_URI=mongodb://localhost:27017/mon_projet
+JWT_SECRET=super_secret_key_à_changer_en_production
+NODE_ENV=development
 """
     
     # Création des fichiers
@@ -652,7 +785,7 @@ DEBUG=True
     if not backend_env_path.exists():
         backend_env_path.write_text(content, encoding="utf-8")
     
-    click.echo("✅ Environnement Backend (.env) initialisé.")
+    click.echo(f"✅ Environnement Backend (.env pour {db_type}) initialisé.")
 
 @cli.command("setup-env")
 @click.option('--path', default=".", help="Chemin où créer le fichier .env.example")

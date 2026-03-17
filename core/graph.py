@@ -1081,12 +1081,10 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
         # Extraire et créer tout fichier manquant listés dans la checklist
         required_files = self._extract_required_files(state.get("subtask_checklist", ""))
         
-        SYSTEM_CONFIG_FILES = [
-            ".eslintrc.json",
-            ".prettierrc.json",
-            "tsconfig.json",
-            "vite.config.ts"
-        ]
+        # 🛡️ FIX: Do NOT add root-level config files (tsconfig.json, vite.config.ts)
+        # These should only exist in backend/ and frontend/ subdirectories
+        # The .example files are intentionally created at root by cli.py for user reference
+        # but actual working config files must live in their respective modules
         
         REQUIRED_BACKEND_FILES = [
             "backend/package.json",
@@ -1097,8 +1095,6 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             "frontend/package.json",
             "frontend/src/main.tsx"
         ]
-        
-        required_files.extend(SYSTEM_CONFIG_FILES)
         
         # Ajouter les fichiers vitaux selon le module cible
         target_mod = state.get("target_module", "")
