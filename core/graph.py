@@ -3318,7 +3318,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         self.graph_builder.add_edge("code_map_node", "GraphicDesign_node")
         self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
         
-        self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "architecture_guard_node": "architecture_guard_node"})
+        self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "architecture_guard_node": "architecture_guard_node", "verify_node": "verify_node"})
         self.graph_builder.add_conditional_edges("architecture_guard_node", self.route_after_arch_guard, {"impl_node": "impl_node", "persist_node": "persist_node"})
         
         self.graph_builder.add_edge("persist_node", "esm_compatibility_node")
