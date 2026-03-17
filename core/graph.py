@@ -4,6 +4,7 @@
 
 import logging
 import time
+import re
 from pathlib import Path
 from typing import TypedDict, List, Any
 from itertools import chain
@@ -144,9 +145,9 @@ class AgentState(TypedDict):
     file_diff: dict  # Diff summary between snapshots
     
     # Infinite loop detection tracking
-    previous_node_route: str = ""  # Track which node was just executed
-    state_history: List[str] = None  # History of (node_name, validation_status) pairs
-    repeated_state_count: int = 0  # Count of consecutive repeated states
+    previous_node_route: str  # Track which node was just executed
+    state_history: List[str] | None  # History of (node_name, validation_status) pairs
+    repeated_state_count: int  # Count of consecutive repeated states
 
 
 class SpecGraphManager:
@@ -2261,8 +2262,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         expected_files = set()
         for line in checklist.split('\n'):
             # Chercher les patterns comme "backend/src/app.ts", "frontend/package.json"
-            import re as regex
-            matches = regex.findall(r'[`\'"]?([a-zA-Z0-9\/_\-\.]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md))[`\'"]?', line)
+            matches = re.findall(r'[`\'"]?([a-zA-Z0-9\/_\-\.]+\.(?:ts|tsx|js|jsx|json|yaml|yml|md))[`\'"]?', line)
             expected_files.update(matches)
         
         logger.info(f"📋 Fichiers attendus selon la checklist: {len(expected_files)}")
@@ -2273,7 +2273,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             line = line.strip()
             if line and not line.startswith('│') and not line.startswith('└') and '/' in line:
                 # Nettoyer les caractères de visualisation
-                clean_path = regex.sub(r'^[\s│└─]*', '', line).strip()
+                clean_path = re.sub(r'^[\s│└─]*', '', line).strip()
                 if '.' in clean_path and any(clean_path.endswith(ext) for ext in ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.md']):
                     real_files.add(clean_path)
         
