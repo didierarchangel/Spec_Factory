@@ -794,13 +794,13 @@ class SpecGraphManager:
         Transforme un design_spec JSON complexe en directives claires et actionnables.
         """
         if not design_spec:
-            return "NO DESIGN SPECIFICATION PROVIDED. Use standard Tailwind defaults."
+            return "NO DESIGN SPECIFICATION PROVIDED. Use premium Tailwind defaults."
             
         if design_spec.get("error") == "Skipped (non-UI)":
             return ""  # Empty for backend tasks
             
         if "error" in design_spec:
-            return "NO DESIGN SPECIFICATION PROVIDED. Use standard Tailwind defaults."
+            return "NO DESIGN SPECIFICATION PROVIDED. Use premium Tailwind defaults."
         
         pattern = design_spec.get("pattern", "N/A")
         tailwind = design_spec.get("tailwind", {})

@@ -64,25 +64,14 @@ class GraphicDesign:
             patterns = self.engine.patterns[:5]
             
         if preferred_system:
-             # Filter using the SYSTEM field
-             filtered = [p for p in patterns if p.get("system") == preferred_system.lower()]
-             if filtered:
-                 patterns = filtered
-                 logger.info(f"   ✅ Using patterns from preferred system: {preferred_system}")
-             else:
-                 logger.warning(f"⚠️ No patterns found for system: {preferred_system} in category: {category}")
-                 # Fallback logic: try standard if premium was requested and failed
-                 if preferred_system.lower() == "premium":
-                     standard_fallback = [p for p in patterns if p.get("system") == "standard"]
-                     if standard_fallback:
-                         patterns = standard_fallback
-                         logger.info(f"   🔄 Falling back to 'standard' system for category: {category}")
-                     else:
-                         logger.warning(f"⚠️ Standard fallback also failed for category: {category}. Using default.")
-                         patterns = self.engine.patterns[:5]
-                 else:
-                     logger.warning(f"⚠️ Using default patterns.")
-                     patterns = self.engine.patterns[:5]
+            # Filter using the SYSTEM field
+            filtered = [p for p in patterns if p.get("system") == preferred_system.lower()]
+            if filtered:
+                patterns = filtered
+                logger.info(f"   ✅ Using patterns from preferred system: {preferred_system}")
+            else:
+                logger.warning(f"⚠️ No patterns found for system: {preferred_system} in category: {category}")
+                patterns = self.engine.patterns[:5]
 
         # Rank and return the best one
         best = self.ranker.rank(patterns, 9) # Arbitrary 9 for constitution alignment for now
@@ -215,18 +204,17 @@ class GraphicDesign:
         category = self.parse_intent(prompt)
         logger.info(f"   📋 Intent detected: {category}")
         
-        # 🔍 Design system detection (premium ou Standard)
-        system = None
+        # 🔍 Design system detection (premium only)
+        system = "premium"
         framework = "react" # Default
         
         # 1. Check prompt for preference
         if any(kw in prompt.lower() for kw in ["premium", "business", "clean", "pro", "modern"]):
             system = "premium"
             logger.info(f"   ✅ Premium system detected in prompt")
-        elif "standard" in prompt.lower():
-            system = "standard"
-            logger.info(f"   ✅ Standard system detected in prompt")
-            
+        elif any(kw in prompt.lower() for kw in ["legacy", "classic", "standard"]):
+            logger.info(f"   ⚠️ Design hints for legacy/standard layouts ignored; premium remains the design system")
+        
         # 2. Check keyword for framework hints
         if "vue" in prompt.lower(): framework = "vue"
         elif "next" in prompt.lower(): framework = "nextjs"
@@ -239,20 +227,17 @@ class GraphicDesign:
                 with open(lock_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     stack = data.get("stack_preferences", {})
-                    if not system:
-                        system = stack.get("design")
-                    
-                    # Ensure system is valid (could be empty string in some lock files)
-                    if not system or system.strip() == "":
-                        system = "standard"
-                        
                     framework = stack.get("framework", framework)
+                    lock_design = stack.get("design")
+                    if lock_design:
+                        if lock_design.lower() == "premium":
+                            system = "premium"
+                        else:
+                            logger.warning(f"⚠️ Design system '{lock_design}' in lock not supported; continuing with premium.")
                     logger.info(f"   ✅ Specs from lock: system={system}, framework={framework}")
             except Exception as e:
                 logger.debug(f"   ℹ️ Could not read .spec-lock.json: {e}")
-        
-        # 4. Default to standard
-        system = system or "standard"
+
         logger.info(f"   🎯 Final system: {system} | Framework: {framework}")
             
         # Select pattern
