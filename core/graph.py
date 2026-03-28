@@ -5,8 +5,9 @@
 import logging
 import time
 import re
+import json
 from pathlib import Path
-from typing import TypedDict, List, Any
+from typing import TypedDict, List, Any, Dict
 from itertools import chain
 from langgraph.graph import StateGraph, START, END
 
@@ -15,6 +16,12 @@ from langchain_core.output_parsers import StrOutputParser
 from core.guard import SubagentAnalysisOutput, SubagentImplOutput, SubagentVerifyOutput, SubagentBuildFixOutput, SubagentTaskEnforcerOutput
 from langchain_core.output_parsers import JsonOutputParser
 from core.GraphicDesign import GraphicDesign
+from core.component_improver import ComponentImprover
+from core.constitution_generator import ConstitutionGenerator
+from core.design_system_generator import DesignSystemGenerator
+from core.project_enhancer import ProjectEnhancer
+from core.ux_flow_designer import UXFlowDesigner
+from core.vision_pattern_detector import PatternVisionDetector
 
 import shutil
 
@@ -113,6 +120,12 @@ class AgentState(TypedDict):
     # Variables de contexte partagées (générées une seule fois)
     constitution_hash: str
     constitution_content: str
+    project_brief: dict
+    component_manifest: dict
+    pattern_vision: dict
+    design_system: dict
+    ux_flow: dict
+    constitution_update_summary: str
 
     current_step: str
     completed_tasks_summary: str
@@ -260,6 +273,30 @@ class SpecGraphManager:
         
         # Default: None (tous les modules)
         return None
+
+    def _load_stack_preferences(self) -> Dict[str, str]:
+        """Lit `.spec-lock.json` pour récupérer les préférences stack de l'utilisateur."""
+        lock_file = self.root / ".spec-lock.json"
+        if not lock_file.exists():
+            return {}
+        try:
+            data = json.loads(lock_file.read_text(encoding="utf-8"))
+            prefs = data.get("stack_preferences") or {}
+            return {k: v for k, v in prefs.items() if isinstance(v, str)}
+        except Exception as exc:
+            logger.warning("⚠️ Impossible de charger .spec-lock.json : %s", exc)
+            return {}
+
+    def _extract_component_candidates(self, state: AgentState) -> List[str]:
+        """Extrait les composants mentionnés dans l'instruction de l'utilisateur."""
+        raw = f\"{state.get('user_instruction', '')}\\n{state.get('target_task', '')}\"
+        cleaned = raw.replace("•", "\n").replace(";", "\n").replace(",", "\n")
+        candidates = []
+        for line in cleaned.splitlines():
+            part = line.strip("-• ").strip()
+            if part and len(part) >= 3:
+                candidates.append(part)
+        return candidates
 
     def _get_build_tool(self, target_module: str) -> str:
         """Détecte le bon outil de build selon le module et framework.
@@ -3343,6 +3380,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         self.graph_builder.add_node("analysis_node", self.analysis_node)
         self.graph_builder.add_node("scaffold_node", self.scaffold_node)
         self.graph_builder.add_node("code_map_node", self.code_map_node)
+        self.graph_builder.add_node("project_enhancer_node", self.project_enhancer_node)
+        self.graph_builder.add_node("component_improver_node", self.component_improver_node)
+        self.graph_builder.add_node("vision_pattern_node", self.pattern_vision_node)
+        self.graph_builder.add_node("design_system_node", self.design_system_node)
+        self.graph_builder.add_node("ux_flow_node", self.ux_flow_node)
+        self.graph_builder.add_node("constitution_generator_node", self.constitution_generator_node)
         self.graph_builder.add_node("GraphicDesign_node", self.GraphicDesign_node)
         self.graph_builder.add_node("impl_node", self.impl_node)
         self.graph_builder.add_node("architecture_guard_node", self.architecture_guard_node)
@@ -3360,7 +3403,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         self.graph_builder.add_edge(START, "analysis_node")
         self.graph_builder.add_edge("analysis_node", "scaffold_node")
         self.graph_builder.add_edge("scaffold_node", "code_map_node")
-        self.graph_builder.add_edge("code_map_node", "GraphicDesign_node")
+        self.graph_builder.add_edge("code_map_node", "project_enhancer_node")
+        self.graph_builder.add_edge("project_enhancer_node", "component_improver_node")
+        self.graph_builder.add_edge("component_improver_node", "vision_pattern_node")
+        self.graph_builder.add_edge("vision_pattern_node", "design_system_node")
+        self.graph_builder.add_edge("design_system_node", "ux_flow_node")
+        self.graph_builder.add_edge("ux_flow_node", "constitution_generator_node")
+        self.graph_builder.add_edge("constitution_generator_node", "GraphicDesign_node")
         self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
         
         self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "architecture_guard_node": "architecture_guard_node", "verify_node": "verify_node"})
