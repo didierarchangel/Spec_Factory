@@ -685,6 +685,7 @@ build/
         gitignore_path.write_text(gitignore_content, encoding="utf-8")
         click.echo("✅ Fichier `.gitignore` par défaut créé.")
         click.echo("\n✨ Projet initialisé avec succès!")
+        click.echo("\n✨ Avant de passer à la prochaine étape, n'oubliez pas de configurer vos clés API dans le fichier `.env` à la racine du projet.")
         click.echo("👉 Prochaine étape : `speckit specify \"Voici mon projet pour une application ...\"`")
 
 
