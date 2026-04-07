@@ -1067,7 +1067,8 @@ def component(prompt, provider, model):
 @click.option('--prompt', help="Description additionnelle de l'ambiance (Vibe)")
 def vibe_design(arg_prompt, provider, model, prompt):
     """[VIBE DESIGN MAKER] Extrait l'identité visuelle (tokens, patterns) du projet."""
-    final_prompt = arg_prompt or prompt
+    raw_prompt = arg_prompt or prompt or "Générer une identité visuelle premium et cohérente."
+    full_prompt = f"speckit vibe-design : {raw_prompt}"
     try:
         from core.graph import AgentState
         # Temperature=0 pour une extraction de design précise
@@ -1087,7 +1088,7 @@ def vibe_design(arg_prompt, provider, model, prompt):
         # État initial pour le design
         state: AgentState = {
             "constitution_content": constitution_content,
-            "user_instruction": final_prompt or "Générer une identité visuelle premium et cohérente.",
+            "user_instruction": full_prompt,
             "target_task": "Vibe Design Extraction",
             "pattern_vision": {},
             "component_manifest": {},
