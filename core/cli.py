@@ -1097,12 +1097,12 @@ def vibe_design(arg_prompt, provider, model, prompt):
             "current_step": "design_extraction"
         }
         
-        # Exécuter les nœuds de design séquentiellement
-        click.echo(" ↳ ✨ Enrichissement du brief projet...")
-        state.update(graph_manager.project_enhancer_node(state)) # type: ignore
+        # Exécuter SEULEMENT les nœuds de design pour ne pas écraser la constitution métier
+        # click.echo(" ↳ ✨ Enrichissement du brief projet...")
+        # state.update(graph_manager.project_enhancer_node(state)) # type: ignore
         
-        click.echo(" ↳ 🧩 Segmentation des composants UI...")
-        state.update(graph_manager.component_improver_node(state)) # type: ignore
+        # click.echo(" ↳ 🧩 Segmentation des composants UI...")
+        # state.update(graph_manager.component_improver_node(state)) # type: ignore
         
         click.echo(" ↳ 👁️  Détection des patterns visuels (Vibe)...")
         state.update(graph_manager.pattern_vision_node(state)) # type: ignore
@@ -1110,11 +1110,11 @@ def vibe_design(arg_prompt, provider, model, prompt):
         click.echo(" ↳ 🎨 Génération du Design System...")
         state.update(graph_manager.design_system_node(state)) # type: ignore
         
-        click.echo(" ↳ 🌊 Définition des flux UX...")
-        state.update(graph_manager.ux_flow_node(state)) # type: ignore
+        # click.echo(" ↳ 🌊 Définition des flux UX...")
+        # state.update(graph_manager.ux_flow_node(state)) # type: ignore
         
-        click.echo(" ↳ 📜 Mise à jour de la Constitution avec le design...")
-        state.update(graph_manager.constitution_generator_node(state)) # type: ignore
+        # click.echo(" ↳ 📜 Mise à jour de la Constitution avec le design...")
+        # state.update(graph_manager.constitution_generator_node(state)) # type: ignore
         
         # 🛡️ PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
         tokens_path = Path("design/tokens.yaml")
@@ -1126,9 +1126,24 @@ def vibe_design(arg_prompt, provider, model, prompt):
                 yaml.dump(tokens, f, default_flow_style=False)
             click.echo(f" ↳ 💾 Tokens sauvegardés dans {tokens_path}")
         
-        # Sauvegarder la constitution mise à jour
-        const_path.write_text(state["constitution_content"], encoding="utf-8")
-        
+        # 📜 Smart Update de la Constitution
+        if constitution_content:
+            import re
+            ds_style = state.get("design_system", {}).get("style", "premium")
+            ds_tokens = state.get("pattern_vision", {}).get("tokens", {}).get("colors", {}).keys()
+            tokens_str = ", ".join(ds_tokens) if ds_tokens else "primary, secondary, accent"
+            
+            new_design_block = f"## 🎨 Design System Généré\n- Style: {ds_style}\n- Tokens clés: {tokens_str}\n"
+            
+            # Remplacement de la section Design existante
+            pattern = re.compile(r"## 🎨 Design System Généré.*?(?=\n## |$)", re.DOTALL)
+            if pattern.search(constitution_content):
+                new_const = pattern.sub(new_design_block, constitution_content)
+            else:
+                new_const = constitution_content + "\n\n" + new_design_block
+                
+            const_path.write_text(new_const, encoding="utf-8")
+            click.echo(" ↳ 📜 Constitution mise à jour intelligemment (sans effacer le métier).")
         click.echo("")
         click.secho("✨ [VIBE DESIGN MAKER] EXTRACTION RÉUSSIE !", fg="green", bold=True)
         click.echo(f"✅ Tokens visuels sauvegardés dans `{tokens_path}`.")
