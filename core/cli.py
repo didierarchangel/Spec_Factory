@@ -705,7 +705,7 @@ ANTHROPIC_API_KEY=votre_cle_ici
 OPENAI_API_KEY=votre_cle_ici
 # Get one at https://openai.com/fr-FR/index/openai-api/
 
-# Google API Key for Gemini models (gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.5-pro)
+# Google API Key for Gemini models (gemini-1.5-flash, gemini-1.5-flash-lite, gemini-1.5-pro)
 # Get one at https://aistudio.google.com/app/apikey
 GOOGLE_API_KEY=votre_cle_ici
 
@@ -826,9 +826,10 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None, te
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         model = model_name or (
-            "gemini-2.5-flash"
+            "gemini-1.5-flash"
             if provider == "google"
-            else "gemini-2.5-flash-lite"
+            else "gemini-1.5-flash-lite"
+            
         )
 
         return ChatGoogleGenerativeAI(
