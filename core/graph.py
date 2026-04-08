@@ -229,15 +229,9 @@ class SpecGraphManager:
         self.graph_builder = StateGraph(AgentState)
         self._build_graph()
 
-        # Logs Models et Pattern Vision
-        print("Model injected: ", self.model)
-        print(self.pattern_vision_detector.analyze("vibe-design: dark mode with #ff0000 button"))
-        
-
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.INFO)
-        self.logger.info(f"PatternVisionDetector initialized. Model injected: {self.model}")
-        exit()  
+        self.logger.info(f"SpecGraphManager initialized for root: {self.root}")
 
 
 

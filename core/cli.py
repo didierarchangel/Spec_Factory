@@ -826,10 +826,9 @@ def get_llm(provider: Optional[str] = None, model_name: Optional[str] = None, te
         from langchain_google_genai import ChatGoogleGenerativeAI
 
         model = model_name or (
-            "gemini-1.5-flash"
+            "gemini-1.5-flash-latest"
             if provider == "google"
             else "gemini-1.5-flash-lite"
-            
         )
 
         return ChatGoogleGenerativeAI(
