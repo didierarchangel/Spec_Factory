@@ -2441,8 +2441,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             # - Si generation echouee OU structure invalide OU verifier=REJETE -> REJETE
             # [SAFE] HANDLING "Aucune alerte" FALSE POSITIVE
             alerts_val = result.get('alertes', '')
-            alerts_low = alerts_val.lower()
-            if verifier_status == "REJETE" and ("aucune alerte" in alerts_low or alerts_low.strip() in ["none", "n/a", "ras"]):
+            alerts_is_none = self._is_no_alert_text(alerts_val)
+            if verifier_status == "REJETE" and alerts_is_none:
                 if not generation_failed and structure_valid and missing == 0:
                     logger.info("[SAFE] Audit FALSE REJECTION detected (Alertes says None). Overriding to APPROUVE.")
                     verifier_status = "APPROUVE"
@@ -2480,11 +2480,21 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 
                 # [SAFE] TRACK audit errors to detect recurring issues
                 audit_errors = state.get("audit_errors_history", [])
-                error_summary = f"{result.get('alertes', '')[:100]}..."  # First 100 chars
+                raw_alert = result.get('alertes', '')
+                if not self._is_no_alert_text(raw_alert):
+                    error_summary = f"{str(raw_alert)[:100]}..."
+                else:
+                    # Si "Aucune", on track plutot la cause technique explicite
+                    fallback_msg = (feedback_msg or state.get("last_error", "") or "Audit rejected without explicit alert").strip()
+                    error_summary = f"{fallback_msg[:100]}..."
                 audit_errors.append(error_summary)
                 
                 # [SCAN] DETECT RECURRING ERRORS (same error twice = can't fix it automatically)
-                is_recurring_error = len(audit_errors) >= 2 and audit_errors[-1] == audit_errors[-2]
+                is_recurring_error = (
+                    len(audit_errors) >= 2
+                    and audit_errors[-1] == audit_errors[-2]
+                    and not self._is_no_alert_text(audit_errors[-1])
+                )
                 if is_recurring_error:
                     logger.error(f"[AI] RECURRING ERROR DETECTED: {audit_errors[-1]}")
                     logger.error(f"[STOP] Same error appeared {len([e for e in audit_errors if e == audit_errors[-1]])} times. Stopping retries.")
@@ -2770,6 +2780,21 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             logger.info(f"[FIX] Checklist normalize: '{raw_path}' -> '{path}'")
 
         return path
+
+    def _is_no_alert_text(self, value: Any) -> bool:
+        """Detecte si un texte d'alerte signifie 'aucune erreur'."""
+        txt = str(value or "").strip().lower()
+        if txt in {"", "none", "n/a", "na", "ras", "ok", "aucune", "aucun"}:
+            return True
+        markers = [
+            "aucune alerte",
+            "aucune erreur",
+            "pas d'alerte",
+            "pas d erreur",
+            "no alert",
+            "no error",
+        ]
+        return any(m in txt for m in markers)
 
     def _extract_required_files(self, checklist_text: str) -> List[str]:
         """Extrait les chemins de fichiers obligatoires mentionnes dans la checklist.
@@ -3531,7 +3556,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             logger.error(f"[STOP] AUDIT REJECTION LIMIT REACHED: {error_count}/{MAX_RETRIES} attempts exhausted")
             audit_history = state.get('audit_errors_history', [])
             # [SAFE] Logic logic: only log real errors
-            filtered_errors = [e for e in audit_history if "aucune alerte" not in e.lower() and "none" not in e.lower()]
+            filtered_errors = [
+                e for e in audit_history
+                if not self._is_no_alert_text(e)
+            ]
             if filtered_errors:
                 logger.error(f"[ERROR] Audit errors: {filtered_errors}")
             else:
