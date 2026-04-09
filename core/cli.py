@@ -56,6 +56,12 @@ def _safe_click_echo(message: Any = None, **kwargs: Any):
 
 click.echo = _safe_click_echo
 
+def _normalize_task_id(task_id: str) -> str:
+    """Normalise un identifiant de tache CLI (ex: '--00_X' -> '00_X')."""
+    cleaned = (task_id or "").strip().strip('"').strip("'")
+    cleaned = re.sub(r"^--+", "", cleaned)
+    return cleaned
+
 # Désactiver les logs verbeux des bibliothèques externes (comme httpx et google_genai)
 # pour ne pas polluer le terminal de l'utilisateur avec les retries 503
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -1312,10 +1318,13 @@ def status():
 @click.option('--instruction', help="Instruction supplémentaire guidant l'implémentation (ex: 'Ne touche pas au frontend')")
 def run(task, component, provider, model, instruction):
     """Exécute une tâche sous verrouillage de contexte et de concurrence."""
-    target_id = task or component
+    raw_target_id = task or component
+    target_id = _normalize_task_id(raw_target_id or "")
     if not target_id:
         click.echo("[ERROR] ERREUR : Vous devez specifier --task ou --component.")
         return
+    if raw_target_id and raw_target_id != target_id:
+        click.echo(f"[INFO] Normalisation de l'ID tâche: '{raw_target_id}' -> '{target_id}'")
 
     validator = SpecValidator()
     
@@ -1445,7 +1454,8 @@ def run(task, component, provider, model, instruction):
         )
         
         task_complete = (checked_count == total_count) if total_count > 0 else True
-        audit_approved = final_state.get("validation_status") == "APPROUVÉ"
+        status = str(final_state.get("validation_status", "")).upper().replace("É", "E")
+        audit_approved = status == "APPROUVE"
         fatal_error = final_state.get("fatal_error", False)
         
         # [STOP] Check if run was aborted due to fatal error

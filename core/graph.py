@@ -137,6 +137,7 @@ class AgentState(TypedDict):
     # Cible actuelle
     target_task: str
     target_module: str  # Module cible extrait du task ID (backend/frontend/mobile/None)
+    is_vibe_design_task: bool  # Tache 00_Vibe_Design_Extraction (pipeline design-only)
     
     # Resultats des n?uds
     analysis_output: str
@@ -270,6 +271,9 @@ class SpecGraphManager:
         Returns: str (module name) or None (all modules)
         """
         import re
+        if self._is_vibe_design_task(task_id):
+            return None
+
         # Pattern: 02_setup_backend, 03_setup_frontend, etc.
         match = re.search(r"_(backend|frontend|mobile|api|infra|docs)", task_id, re.IGNORECASE)
         if match:
@@ -466,6 +470,18 @@ class SpecGraphManager:
             raise FileNotFoundError(f"Prompt introuvable : {path}")
         return path.read_text(encoding="utf-8")
 
+    def _inject_prompt_vars(self, prompt_text: str, inject_dict: dict[str, Any]) -> str:
+        """Injecte les placeholders en supportant les deux formats:
+        - __PLACEHOLDER__
+        - {placeholder}
+        """
+        rendered = prompt_text
+        for key, value in inject_dict.items():
+            string_value = str(value)
+            rendered = rendered.replace("__" + key.upper() + "__", string_value)
+            rendered = rendered.replace("{" + key + "}", string_value)
+        return rendered
+
     def _safe_parse_json(self, content: str, pydantic_object) -> dict:
         """Nettoie et parse le JSON avec des fallbacks robustes pour les grands volumes de code."""
         cleaned = content.strip()
@@ -550,6 +566,21 @@ class SpecGraphManager:
         ]
         task_text = f"{task_name}\n{checklist}".lower()
         return any(re.search(k, task_text) for k in frontend_keywords)
+
+    def _is_vibe_design_task(self, task_name: str, checklist: str = "", user_instruction: str = "") -> bool:
+        """Detecte l'etape d'extraction design (00_Vibe_Design_Extraction)."""
+        haystack = f"{task_name}\n{checklist}\n{user_instruction}".lower()
+        markers = [
+            "vibe_design_extraction",
+            "vibe design extraction",
+            "design extraction",
+            "design/tokens.yaml",
+            "design/image_meta.json",
+            "design/constitution_design.yaml",
+            "constitution/mappingcomponent.md",
+            "mappingcomponent.md",
+        ]
+        return any(marker in haystack for marker in markers)
 
     def project_enhancer_node(self, state: AgentState) -> dict:
         """Enrichit la vision du projet et la stack."""
@@ -636,6 +667,10 @@ class SpecGraphManager:
     def GraphicDesign_node(self, state: AgentState) -> dict:
         """N?ud de Design : Transforme l'intention UI en AST + Specs Tailwind."""
         logger.info(f"[DESIGN] Debut du Design pour la tache : {state['target_task']}")
+
+        if state.get("is_vibe_design_task", False):
+            logger.info("[VIBE] GraphicDesign ignore: etape design extraction sans generation d'UI.")
+            return {"design_spec": {"error": "Skipped (vibe-design task)", "tailwind": {}}}
         
         # [SAFE] MANDATORY CHECK: Only run for frontend/UI related tasks
         is_ui_task = self._is_frontend_task(state.get("target_task", ""), state.get("subtask_checklist", ""))
@@ -670,9 +705,59 @@ class SpecGraphManager:
             # Fallback minimaliste
             return {"design_spec": {"error": str(e), "tailwind": {}}}
 
+    def vibe_finalize_node(self, state: AgentState) -> dict:
+        """Finalise l'etape 00_Vibe_Design_Extraction en persistant design/tokens.yaml."""
+        logger.info("[VIBE] Finalisation de l'extraction design...")
+
+        tokens = state.get("pattern_vision", {}).get("tokens", {}) or {}
+        tokens_path = self.root / "design" / "tokens.yaml"
+        tokens_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            import yaml
+            serialized = yaml.safe_dump(tokens, sort_keys=False, allow_unicode=False)
+        except Exception:
+            # Fallback sans dependance PyYAML
+            serialized = json.dumps(tokens, indent=2, ensure_ascii=True)
+
+        tokens_path.write_text(serialized, encoding="utf-8")
+        logger.info(f"[SAVE] Tokens design sauvegardes dans {tokens_path}")
+
+        return {
+            "validation_status": "APPROUVE",
+            "score": "100",
+            "points_forts": "Extraction Vibe Design executee et tokens sauvegardes.",
+            "alertes": "Aucune",
+            "feedback_correction": "",
+        }
+
     def analysis_node(self, state: AgentState) -> dict:
         """N?ud 1 : Analyse de conformite et segmentation."""
         logger.info(f"[SCAN] Debut de l'Analyse pour la tache : {state['target_task']}")
+
+        is_vibe_task = self._is_vibe_design_task(
+            state.get("target_task", ""),
+            state.get("subtask_checklist", ""),
+            state.get("user_instruction", ""),
+        )
+
+        if is_vibe_task:
+            logger.info("[VIBE] Tache detectee: pipeline design-only (pas de generation code).")
+            task_keywords = extract_task_keywords(state["target_task"])
+            return {
+                "analysis_output": (
+                    "Impact: Extraction des signaux visuels et fusion des sources design.\n"
+                    "Conflits: Aucun conflit code attendu.\n"
+                    "Segmentation: Lire MappingComponent, lire image_meta, lire constitution_design, fusionner, ecrire design/tokens.yaml\n"
+                    "Integrite: Respect strict de la priorite Constitution > MappingComponent > constitution_design > image_meta."
+                ),
+                "feedback_correction": "",
+                "error_count": 0,
+                "audit_errors_history": [],
+                "target_module": None,
+                "task_keywords": task_keywords,
+                "is_vibe_design_task": True,
+            }
         
         # --- EXTRACTION DU MODULE CIBLE ---
         target_module = self._extract_target_module(state["target_task"])
@@ -694,11 +779,7 @@ class SpecGraphManager:
             "user_instruction": state.get("user_instruction", ""),
             "format_instructions": parser.get_format_instructions()
         }
-        
-        # Replace placeholders directly with __ syntax to avoid collision with TypeScript { }
-        for key, value in inject_dict.items():
-            placeholder = "__" + key.upper() + "__"
-            prompt_text = prompt_text.replace(placeholder, str(value))
+        prompt_text = self._inject_prompt_vars(prompt_text, inject_dict)
         
         try:
             import concurrent.futures
@@ -750,7 +831,8 @@ class SpecGraphManager:
                 "error_count": 0,
                 "audit_errors_history": [],  # [SAFE] Initialize error tracking
                 "target_module": target_module,   # Passer le module cible au graphe
-                "task_keywords": task_keywords     # [GOAL] Persist keywords for Context Filtering
+                "task_keywords": task_keywords,    # [GOAL] Persist keywords for Context Filtering
+                "is_vibe_design_task": False,
             }
         except ValueError as e:
             error_msg = f"Reponse IA corrompue (Analysis JSON) : {str(e)}"
@@ -1058,10 +1140,8 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                 "format_instructions": format_instructions
             }
             
-            # Replace all placeholders directly with __ syntax to avoid collision with TypeScript { }
-            for key, value in inject_dict.items():
-                placeholder = "__" + key.upper() + "__"
-                prompt_text = prompt_text.replace(placeholder, str(value))
+            # Replace placeholders for both formats: __KEY__ and {key}
+            prompt_text = self._inject_prompt_vars(prompt_text, inject_dict)
             
             # [WARN] pass directly to model with inline retry
             final_prompt = "You are a helpful assistant.\n\n" + prompt_text
@@ -2315,10 +2395,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 "format_instructions": parser.get_format_instructions()
             }
             
-            # Replace placeholders safely with __ syntax to avoid collision with TypeScript { }
-            for key, value in inject_dict.items():
-                placeholder = "__" + key.upper() + "__"
-                prompt_text = prompt_text.replace(placeholder, str(value))
+            # Replace placeholders for both formats: __KEY__ and {key}
+            prompt_text = self._inject_prompt_vars(prompt_text, inject_dict)
             
             # [WARN] NO ChatPromptTemplate - pass directly to model with inline retry
             from langchain_core.messages import HumanMessage
@@ -2517,10 +2595,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
                 "format_instructions": format_instructions
             }
             
-            # Replace placeholders directly with __ syntax to avoid collision with TypeScript { }
-            for key, value in inject_dict.items():
-                placeholder = "__" + key.upper() + "__"
-                prompt_text = prompt_text.replace(placeholder, str(value))
+            # Replace placeholders for both formats: __KEY__ and {key}
+            prompt_text = self._inject_prompt_vars(prompt_text, inject_dict)
             
             # [WARN] NO ChatPromptTemplate - pass directly to model with inline retry
             final_prompt = "You are a helpful assistant.\n\n" + prompt_text
@@ -3434,6 +3510,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         
         logger.warning(f"[BACK] AUDIT REJECTED: Returning to impl_node for PATCH mode ({error_count}/{MAX_RETRIES} attempts used)")
         return "impl_node"
+
+    def route_after_graphic_design(self, state: AgentState) -> str:
+        """Route apres GraphicDesign:
+        - Vibe extraction -> finalisation design-only
+        - Autres taches -> impl code classique
+        """
+        if state.get("is_vibe_design_task", False):
+            logger.info("[VIBE] Bypass code pipeline: route vers vibe_finalize_node.")
+            return "vibe_finalize_node"
+        return "impl_node"
         
     def route_after_impl(self, state: AgentState) -> str:
         """Determine la route apres l'implementation (generation brute)."""
@@ -3483,6 +3569,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         self.graph_builder.add_node("ux_flow_node", self.ux_flow_node)
         self.graph_builder.add_node("constitution_generator_node", self.constitution_generator_node)
         self.graph_builder.add_node("GraphicDesign_node", self.GraphicDesign_node)
+        self.graph_builder.add_node("vibe_finalize_node", self.vibe_finalize_node)
         self.graph_builder.add_node("impl_node", self.impl_node)
         self.graph_builder.add_node("architecture_guard_node", self.architecture_guard_node)
         self.graph_builder.add_node("persist_node", self.persist_node)
@@ -3506,7 +3593,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         self.graph_builder.add_edge("design_system_node", "ux_flow_node")
         self.graph_builder.add_edge("ux_flow_node", "constitution_generator_node")
         self.graph_builder.add_edge("constitution_generator_node", "GraphicDesign_node")
-        self.graph_builder.add_edge("GraphicDesign_node", "impl_node")
+        self.graph_builder.add_conditional_edges("GraphicDesign_node", self.route_after_graphic_design, {
+            "vibe_finalize_node": "vibe_finalize_node",
+            "impl_node": "impl_node",
+        })
+        self.graph_builder.add_edge("vibe_finalize_node", END)
         
         self.graph_builder.add_conditional_edges("impl_node", self.route_after_impl, {"impl_node": "impl_node", "architecture_guard_node": "architecture_guard_node", "verify_node": "verify_node"})
         self.graph_builder.add_conditional_edges("architecture_guard_node", self.route_after_arch_guard, {"impl_node": "impl_node", "persist_node": "persist_node"})

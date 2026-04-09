@@ -872,6 +872,7 @@ class EtapeManager:
 
     def _get_step_regex(self, step_id: str, status_box: str = r"\[.\]") -> str:
         """Crée un regex flexible pour matcher l'ID d'étape avec ou sans zéro initial."""
+        step_id = self._normalize_step_id(step_id)
         # Séparer la partie numérique initiale si elle existe (ex: "02_backend" -> "02", "backend")
         match = re.match(r"^(\d+)(_.*)$", step_id)
         if match:
@@ -882,6 +883,11 @@ class EtapeManager:
         else:
             # Match exact si pas de préfixe numérique
             return rf"^## {status_box} {re.escape(step_id)}(?:\s*:|$)"
+
+    def _normalize_step_id(self, step_id: str) -> str:
+        """Normalise les IDs d'etape provenant de la CLI (ex: '--00_x' -> '00_x')."""
+        cleaned = (step_id or "").strip().strip('"').strip("'")
+        return re.sub(r"^--+", "", cleaned)
 
     def get_subtasks_for_step(self, step_id: str) -> list[str]:
         """Retourne la liste des sous-tâches (texte brut) pour une étape donnée."""
