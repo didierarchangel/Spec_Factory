@@ -59,6 +59,7 @@ class ArchitectureGuard:
         ".git/",
         ".vscode/",
         ".idea/",
+        "design/",
         "scripts/",
         "docs/",
         ".env.example",
