@@ -2,8 +2,7 @@ from __future__ import annotations
 import re
 import logging
 import json
-from itertools import chain
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, List
 
 # --- 0. Configuration des Limites ---
 MAX_RETRIES = 3
@@ -61,7 +60,7 @@ class PatternVisionDetector:
         extraction_context = clean_context
         if len(clean_context) > 500:
             # On cherche des délimiteurs textuels standardisés
-            style_match = re.search(r"(?:DESIGN|VISUAL IDENTITY|STYLE).*?(?=CONFIG|STRUCTURE|FUNCTION|$)", 
+            style_match = re.search(r"(?:DESIGN|VISUAL[_ ]IDENTITY|STYLE).*?(?=CONFIG|STRUCTURE|FONCTION|FUNCTION|$)",
                                     clean_context, re.S | re.I)
             if style_match:
                 extraction_context = style_match.group(0).strip()
@@ -70,8 +69,12 @@ class PatternVisionDetector:
 
         # 4. Logique d'extraction
         if is_custom:
-            self.logger.info("Extraction par Intelligence Artificielle en cours...")
-            tokens = self._extract_tokens_with_llm(extraction_context)
+            if self.model is None:
+                self.logger.warning("Aucun LLM configure. Extraction locale des tokens depuis le prompt/image_meta.")
+                tokens = self._extract_custom_tokens(extraction_context, image_meta)
+            else:
+                self.logger.info("Extraction par Intelligence Artificielle en cours...")
+                tokens = self._extract_tokens_with_llm(extraction_context, image_meta=image_meta)
         elif image_meta:
             tokens = self._extract_custom_tokens(extraction_context, image_meta)
         else:
@@ -88,7 +91,7 @@ class PatternVisionDetector:
             "image_metadata": image_meta or {},
         }
 
-    def _extract_tokens_with_llm(self, prompt: str) -> Dict[str, Any]:
+    def _extract_tokens_with_llm(self, prompt: str, image_meta: Dict[str, Any] | None = None) -> Dict[str, Any]:
         """Appel LLM sécurisé avec fallback automatique."""
         from langchain_core.messages import HumanMessage
         
@@ -99,8 +102,9 @@ class PatternVisionDetector:
         )
         
         try:
-            self.logger.info("Calling LLM with prompt...")            
-            response = self.model.invoke([HumanMessage(content=f"{system_prompt}\n\nTexte: {prompt}")])
+            self.logger.info("Calling LLM with prompt...")
+            meta_block = f"\n\nimage_meta: {json.dumps(image_meta, ensure_ascii=False)}" if image_meta else ""
+            response = self.model.invoke([HumanMessage(content=f"{system_prompt}\n\nTexte: {prompt}{meta_block}")])
             self.logger.info(f"LLM response: {response}")
 
             # Extraction JSON robuste (evite l'acces .group sur un match potentiellement None)
@@ -112,7 +116,7 @@ class PatternVisionDetector:
             return json.loads(json_str)
         except Exception as e:
             self.logger.error(f"Erreur LLM: {e}. Bascule sur l'extraction manuelle.")
-            return self._extract_custom_tokens(prompt, None)
+            return self._extract_custom_tokens(prompt, image_meta)
 
     def _extract_custom_tokens(self, text: str, meta: dict | None) -> Dict[str, Any]:
         """Extraction par expressions regulieres (Regex)."""
@@ -128,7 +132,9 @@ class PatternVisionDetector:
 
         # Détection de thèmes sombres
         if any(w in lower_text for w in ["dark", "sombre", "black", "night"]):
-            palette.update({"background": "#0f172a", "surface": "#1e293b", "on_background": "#f8fafc"})
+            palette.setdefault("background", "#0f172a")
+            palette.setdefault("surface", "#1e293b")
+            palette.setdefault("on_background", "#f8fafc")
 
         return {
             "colors": palette,
@@ -161,19 +167,59 @@ class PatternVisionDetector:
         p.update(styles.get(style, {}))
         self.logger.info(f"Palette base set to style {style}: {styles.get(style, {})}")
         
-        # 2. Surcharge spécifique si les métadonnées dictent un STYLE clair
-        if meta and "STYLE" in meta and isinstance(meta["STYLE"], dict):
-            for k, v in meta["STYLE"].items():
-                if isinstance(v, dict):
-                    p.update(v)
-                    self.logger.info(f"Palette overridden from meta STYLE ({k}): {v}")
-                elif isinstance(v, str) and v.startswith("#"):
-                    p[k] = v
-                    self.logger.info(f"Palette overridden from meta STYLE (color {k}): {v}")
+        # 2. Surcharge spécifique depuis image_meta (dominant_colors + STYLE.material)
+        meta_palette: Dict[str, str] = {}
+        if meta and isinstance(meta, dict):
+            dominant = meta.get("dominant_colors")
+            if isinstance(dominant, list):
+                dominant_slots = ["primary", "secondary", "surface", "background", "on_background", "accent"]
+                for slot, color in zip(dominant_slots, dominant):
+                    normalized = self._normalize_hex(color)
+                    if normalized:
+                        meta_palette[slot] = normalized
+
+            style_block = meta.get("STYLE")
+            if isinstance(style_block, dict):
+                meta_palette.update(self._extract_color_map(style_block))
+                material_block = style_block.get("material")
+                if isinstance(material_block, dict):
+                    meta_palette.update(self._extract_color_map(material_block))
+
+        if meta_palette:
+            p.update(meta_palette)
+            self.logger.info(f"Palette overridden from image_meta: {meta_palette}")
                     
         return p
 
+    def _extract_color_map(self, data: Dict[str, Any]) -> Dict[str, str]:
+        aliases = {
+            "background_dark": "background",
+            "surface_dark": "surface",
+            "text_primary": "on_background",
+        }
+        allowed_keys = set(self.BASE_COLORS.keys()) | set(aliases.keys())
 
+        colors: Dict[str, str] = {}
+        for key, value in data.items():
+            if not isinstance(key, str):
+                continue
+            source_key = key.strip().lower()
+            if source_key not in allowed_keys:
+                continue
 
+            normalized = self._normalize_hex(value)
+            if not normalized:
+                continue
 
+            target_key = aliases.get(source_key, source_key)
+            colors[target_key] = normalized
+        return colors
+
+    def _normalize_hex(self, value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        stripped = value.strip()
+        if re.fullmatch(r"#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})", stripped):
+            return stripped.upper()
+        return None
 
