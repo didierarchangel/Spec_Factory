@@ -734,6 +734,11 @@ class SpecGraphManager:
     def analysis_node(self, state: AgentState) -> dict:
         """N?ud 1 : Analyse de conformite et segmentation."""
         logger.info(f"[SCAN] Debut de l'Analyse pour la tache : {state['target_task']}")
+        task_keywords = extract_task_keywords(state["target_task"])
+        transversal_keywords = {"vibe", "design", "extraction"}
+        is_transversal_design_task = any(k in transversal_keywords for k in task_keywords)
+        if is_transversal_design_task:
+            logger.info("[SCAN] Tache transversale detectee : Autorisation des GLOBAL_PATHS")
 
         is_vibe_task = self._is_vibe_design_task(
             state.get("target_task", ""),
@@ -743,7 +748,6 @@ class SpecGraphManager:
 
         if is_vibe_task:
             logger.info("[VIBE] Tache detectee: pipeline design-only (pas de generation code).")
-            task_keywords = extract_task_keywords(state["target_task"])
             return {
                 "analysis_output": (
                     "Impact: Extraction des signaux visuels et fusion des sources design.\n"
@@ -760,7 +764,7 @@ class SpecGraphManager:
             }
         
         # --- EXTRACTION DU MODULE CIBLE ---
-        target_module = self._extract_target_module(state["target_task"])
+        target_module = None if is_transversal_design_task else self._extract_target_module(state["target_task"])
         if target_module:
             logger.info(f"[TARGET] Module cible identifie : {target_module}")
         
@@ -822,7 +826,6 @@ class SpecGraphManager:
             logger.info("[OK] Analyse terminee.")
             
             # Extraire les keywords semantiques pour le Context Filtering
-            task_keywords = extract_task_keywords(state["target_task"])
             logger.info(f"[KEY] Task keywords extractes : {task_keywords}")
             
             return {
