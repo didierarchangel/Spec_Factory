@@ -11,7 +11,7 @@ from pathlib import Path
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-from typing import Optional, Any
+from typing import Optional, Any, cast
 from pydantic import SecretStr
 
 # Charger les variables d'environnement (.env)
@@ -518,8 +518,8 @@ def init(path, here):
     click.echo("\n[INIT] Configuration de la Stack Technique :")
     
     # On impose le style Premium par defaut (Design Intelligence active)
-    selected_design = "premium"
-    click.echo(f"[DESIGN] Style de Design : {selected_design} (Constitutional Architecture)")
+    Defaultselected_design = "premium"
+    click.echo(f"[DESIGN] Style de Design par defaut : {Defaultselected_design} (Constitutional Architecture)")
     
     # ============================================================
     # [INFO] SELECTION FRONTEND EN PREMIER (pour recommandations)
@@ -671,7 +671,7 @@ def init(path, here):
         "stack_preferences": {
             "backend": selected_backend_id,
             "frontend": selected_frontend_id,
-            "design": selected_design,
+            "design": Defaultselected_design,
             "database": selected_database_id
         }
     }
@@ -1152,7 +1152,8 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
         graph_manager = SpecGraphManager(llm)
         
         # Etat initial pour le design
-        state: AgentState = {
+        # Ce flux "vibe-design" ne renseigne qu'un sous-ensemble de l'etat global du graphe.
+        state: dict[str, Any] = {
             "constitution_content": constitution_content,
             "user_instruction": full_prompt,
             "target_task": "Vibe Design Extraction",
@@ -1166,10 +1167,10 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
         }
         
         click.echo(" -> [AI] Detection des patterns visuels (Vibe)...")
-        state.update(graph_manager.pattern_vision_node(state)) # type: ignore
+        state.update(graph_manager.pattern_vision_node(cast(AgentState, state)))
         
         click.echo(" -> [AI] Generation du Design System...")
-        state.update(graph_manager.design_system_node(state)) # type: ignore
+        state.update(graph_manager.design_system_node(cast(AgentState, state)))
         
         # PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
         tokens_path = Path("design/tokens.yaml")
