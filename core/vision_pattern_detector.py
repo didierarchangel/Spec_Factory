@@ -51,21 +51,30 @@ class PatternVisionDetector:
         command_match = re.search(r"vibe-design\s*:\s*['\"]?(.*?)['\"]?$", prompt, re.I | re.S)
         if command_match:
             clean_context = command_match.group(1).strip()
+        
+        # 1.1 Isoler le contexte utilisateur pour eviter le bruit de la Constitution
+        constitution_marker = "[CONSTITUTION PROJECT CONTEXT]"
+        if constitution_marker in clean_context:
+            user_context = clean_context.split(constitution_marker, 1)[0].strip()
+        else:
+            user_context = clean_context
+        if not user_context:
+            user_context = clean_context
 
         # 2. Détection du mode de traitement
         keywords = ["design", "style", "modern", "minimalist", "premium", "dark", "light", "glass"]
-        is_custom = any(kw in clean_context.lower() for kw in keywords)
+        is_custom = any(kw in user_context.lower() for kw in keywords)
 
         # 3. Extraction de la section de style (recherche de mots-clés au lieu d'émojis)
-        extraction_context = clean_context
-        if len(clean_context) > 500:
+        extraction_context = user_context
+        if len(user_context) > 500:
             # On cherche des délimiteurs textuels standardisés
             style_match = re.search(r"(?:DESIGN|VISUAL[_ ]IDENTITY|STYLE).*?(?=CONFIG|STRUCTURE|FONCTION|FUNCTION|$)",
-                                    clean_context, re.S | re.I)
+                                    user_context, re.S | re.I)
             if style_match:
                 extraction_context = style_match.group(0).strip()
             else:
-                extraction_context = clean_context[:2000]
+                extraction_context = user_context[:2000]
 
         # 4. Logique d'extraction
         if is_custom:
@@ -79,7 +88,7 @@ class PatternVisionDetector:
             tokens = self._extract_custom_tokens(extraction_context, image_meta)
         else:
             tokens = {
-                "colors": self._build_palette(clean_context, image_meta),
+                "colors": self._build_palette(user_context, image_meta),
                 "typography": self.BASE_TYPO,
                 "tokens": self.BASE_TOKENS,
             }
@@ -87,7 +96,7 @@ class PatternVisionDetector:
         return {
             "style": "custom" if is_custom else "standard",
             "tokens": tokens,
-            "components": self._extract_components(clean_context, image_meta),
+            "components": self._extract_components(user_context, image_meta),
             "image_metadata": image_meta or {},
         }
 
@@ -96,27 +105,34 @@ class PatternVisionDetector:
         from langchain_core.messages import HumanMessage
         
         system_prompt = (
-            "Extraire les design tokens en JSON pur. "
-            "Schéma: {\"colors\": {\"primary\": \"HEX...\"}, \"typography\": {...}, \"tokens\": {\"radius\": {...}}}. "
-            "Réponds uniquement en JSON."
+            "Extract design tokens and return ONLY valid JSON.\n"
+            "Rules:\n"
+            "1) Output must be a single JSON object, no markdown fences.\n"
+            "2) No comments (// or /* */), no placeholders ('#HEX', '...', 'to fill').\n"
+            "3) Every returned field must contain concrete values.\n"
+            "4) Colors must be valid HEX values (#RRGGBB or #RGB).\n"
+            "Required shape:\n"
+            "{\"colors\":{\"primary\":\"#112233\",\"secondary\":\"#445566\",\"accent\":\"#778899\",\"background\":\"#FFFFFF\",\"surface\":\"#F8FAFC\"},"
+            "\"typography\":{\"font_family\":\"Inter, system-ui, sans-serif\",\"weights\":{\"regular\":400,\"medium\":500,\"bold\":700},\"scale\":{\"h1\":\"3rem\",\"h2\":\"2.5rem\",\"body\":\"1rem\"}},"
+            "\"tokens\":{\"radius\":{\"card\":\"1.25rem\",\"button\":\"1rem\",\"pill\":\"999px\"},\"shadow\":{\"elevated\":\"0 20px 45px -30px rgba(15, 23, 42, 0.55)\"},\"spacing\":{\"small\":\"8px\",\"medium\":\"16px\",\"large\":\"32px\"}}}"
         )
         
+        manual_tokens = self._extract_custom_tokens(prompt, image_meta)
         try:
             self.logger.info("Calling LLM with prompt...")
             meta_block = f"\n\nimage_meta: {json.dumps(image_meta, ensure_ascii=False)}" if image_meta else ""
             response = self.model.invoke([HumanMessage(content=f"{system_prompt}\n\nTexte: {prompt}{meta_block}")])
             self.logger.info(f"LLM response: {response}")
 
-            # Extraction JSON robuste (evite l'acces .group sur un match potentiellement None)
+            # Extraction JSON robuste (tolere markdown/comments/trailing commas)
             response_text = response.content if isinstance(response.content, str) else str(response.content)
-            json_match = re.search(r"(\{.*\})", response_text.replace("\n", " "), re.DOTALL)
-            if not json_match:
-                raise ValueError("No JSON object found in LLM response content.")
-            json_str = json_match.group(1)
-            return json.loads(json_str)
+            parsed = self._parse_model_json(response_text)
+            if not isinstance(parsed, dict):
+                raise ValueError("No valid JSON object found in LLM response content.")
+            return self._sanitize_and_complete_tokens(parsed, manual_tokens)
         except Exception as e:
             self.logger.error(f"Erreur LLM: {e}. Bascule sur l'extraction manuelle.")
-            return self._extract_custom_tokens(prompt, image_meta)
+            return manual_tokens
 
     def _extract_custom_tokens(self, text: str, meta: dict | None) -> Dict[str, Any]:
         """Extraction par expressions regulieres (Regex)."""
@@ -155,17 +171,21 @@ class PatternVisionDetector:
         # 1. Inférence basique via le texte et les métadonnées globales
         combined_text = (text + " " + json.dumps(meta) if meta else text).lower()
         
-        style = "premium"
+        style = None
         if "material" in combined_text: style = "material"
         elif "fluent" in combined_text: style = "fluent"
+        elif "premium" in combined_text: style = "premium"
         
         styles = {
             "material": {"primary": "#3b82f6", "accent": "#10b981"},
             "fluent": {"primary": "#0ea5e9", "accent": "#22d3ee"},
             "premium": {"primary": "#1d4ed8", "accent": "#8b5cf6"}
         }
-        p.update(styles.get(style, {}))
-        self.logger.info(f"Palette base set to style {style}: {styles.get(style, {})}")
+        if style:
+            p.update(styles.get(style, {}))
+            self.logger.info(f"Palette base set to style {style}: {styles.get(style, {})}")
+        else:
+            self.logger.info("Palette base set to neutral defaults (no forced style).")
         
         # 2. Surcharge spécifique depuis image_meta (dominant_colors + STYLE.material)
         meta_palette: Dict[str, str] = {}
@@ -190,6 +210,89 @@ class PatternVisionDetector:
             self.logger.info(f"Palette overridden from image_meta: {meta_palette}")
                     
         return p
+
+    def _parse_model_json(self, response_text: str) -> Dict[str, Any] | None:
+        """Tente de parser un JSON modele en tolerant certains artefacts frequents."""
+        candidate = self._strip_code_fences(response_text).strip()
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+
+        raw_json = candidate[start:end + 1]
+        attempts = [raw_json, self._sanitize_json_like_text(raw_json)]
+        for text in attempts:
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                continue
+        return None
+
+    def _strip_code_fences(self, text: str) -> str:
+        stripped = text.strip()
+        stripped = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", stripped)
+        stripped = re.sub(r"\s*```$", "", stripped)
+        return stripped
+
+    def _sanitize_json_like_text(self, text: str) -> str:
+        # Remove line comments and block comments
+        no_block = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        no_line = re.sub(r"(?m)^\s*//.*$", "", no_block)
+        # Remove trailing commas before } or ]
+        no_trailing_commas = re.sub(r",\s*([}\]])", r"\1", no_line)
+        return no_trailing_commas
+
+    def _sanitize_and_complete_tokens(self, candidate: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[str, Any]:
+        """Nettoie les placeholders et garantit une structure complete."""
+        fallback_colors = fallback.get("colors", {}) if isinstance(fallback, dict) else {}
+        fallback_typography = fallback.get("typography", self.BASE_TYPO) if isinstance(fallback, dict) else self.BASE_TYPO
+        fallback_tokens = fallback.get("tokens", self.BASE_TOKENS) if isinstance(fallback, dict) else self.BASE_TOKENS
+
+        candidate_colors = candidate.get("colors", {}) if isinstance(candidate.get("colors"), dict) else {}
+        clean_colors: Dict[str, str] = {}
+
+        # Base sur fallback, puis override avec les couleurs candidates valides
+        for key, value in fallback_colors.items():
+            clean_colors[key] = value
+        for key, value in candidate_colors.items():
+            normalized = self._normalize_hex(value)
+            if normalized and not self._contains_placeholder(value):
+                clean_colors[key] = normalized
+
+        candidate_typography = candidate.get("typography")
+        if isinstance(candidate_typography, dict) and not self._contains_placeholder(candidate_typography):
+            clean_typography = candidate_typography
+        else:
+            clean_typography = fallback_typography
+
+        candidate_tokens = candidate.get("tokens")
+        if isinstance(candidate_tokens, dict) and not self._contains_placeholder(candidate_tokens):
+            clean_tokens = candidate_tokens
+        else:
+            clean_tokens = fallback_tokens
+
+        return {
+            "colors": clean_colors,
+            "typography": clean_typography,
+            "tokens": clean_tokens,
+        }
+
+    def _contains_placeholder(self, value: Any) -> bool:
+        placeholder_markers = (
+            "#hex", "...", "placeholder", "to fill", "todo", "tbd", "ajout", "ici", "specification"
+        )
+        if isinstance(value, str):
+            lower = value.strip().lower()
+            if lower in {"", "none", "null", "n/a"}:
+                return True
+            return any(marker in lower for marker in placeholder_markers)
+        if isinstance(value, dict):
+            return any(self._contains_placeholder(v) for v in value.values())
+        if isinstance(value, list):
+            return any(self._contains_placeholder(v) for v in value)
+        return False
 
     def _extract_color_map(self, data: Dict[str, Any]) -> Dict[str, str]:
         aliases = {
@@ -222,4 +325,3 @@ class PatternVisionDetector:
         if re.fullmatch(r"#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})", stripped):
             return stripped.upper()
         return None
-
