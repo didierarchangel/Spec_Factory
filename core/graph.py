@@ -158,6 +158,7 @@ class AgentState(TypedDict):
     
     # Instructions utilisateur additionnelles (Ex: speckit run --instruction "Fais ceci")
     user_instruction: str
+    image_meta: dict
     
     # Carte semantique du code (Semantic Code Map)
     code_map: str
@@ -550,26 +551,6 @@ class SpecGraphManager:
         task_text = f"{task_name}\n{checklist}".lower()
         return any(re.search(k, task_text) for k in frontend_keywords)
 
-    def analysis_node(self, state: AgentState) -> dict:
-        """Analyse initiale de la demande utilisateur."""
-        logger.info("[SCAN] Analysis Node: Analyzing user instruction...")
-        instruction = state.get("user_instruction", "")
-        keywords = extract_task_keywords(instruction)
-        
-        # Simulation d'analyse pour le flux initial
-        analysis = f"Analysis of instruction: {instruction[:100]}... Keywords: {', '.join(keywords)}"
-        
-        return {
-            "analysis_output": analysis,
-            "task_keywords": keywords
-        }
-
-    def scaffold_node(self, state: AgentState) -> dict:
-        """Garantit l'arborescence et l'etat initial."""
-        logger.info("[SETUP] Scaffold Node: Ensuring directory structure...")
-        self._ensure_directory_structure()
-        return {"current_step": "scaffolded"}
-
     def project_enhancer_node(self, state: AgentState) -> dict:
         """Enrichit la vision du projet et la stack."""
         logger.info("[OK] Project Enhancer: Enriching project brief...")
@@ -595,11 +576,12 @@ class SpecGraphManager:
         logger.info("[VISION] Vision Pattern: Extracting design tokens from context...")
         instruction = state.get("user_instruction", "") or state.get("target_task", "")
         constitution = state.get("constitution_content", "")
+        image_meta = state.get("image_meta") or None
         
         # ? COMBINED CONTEXT (Instruction + Constitution)
         full_context = f"{instruction}\n\n[CONSTITUTION PROJECT CONTEXT]\n{constitution}"
         
-        pattern = self.pattern_vision_detector.analyze(full_context)
+        pattern = self.pattern_vision_detector.analyze(full_context, image_meta=image_meta)
         
         return {"pattern_vision": pattern}
 

@@ -1075,6 +1075,8 @@ def component(prompt, provider, model):
 def vibe_design(arg_prompt, provider, model, prompt, file):
     """[VIBE DESIGN MAKER] Extrait l'identite visuelle (tokens, patterns) du projet."""
     
+    image_meta = None
+
     # Lecture du prompt depuis le fichier si specifie
     if file:
         try:
@@ -1086,7 +1088,32 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
             return
     else:
         raw_prompt = arg_prompt or prompt or "Generer une identite visuelle premium et coherente."
-        
+
+    # Tentative de detection automatique des metadonnees image
+    # Formats supportes:
+    # 1) JSON pur: {"detected_components": [...]}
+    # 2) Assignation Python: image_meta = {...}
+    payload = raw_prompt.strip()
+    json_candidate = payload
+    assignment_match = re.match(r"^\s*image_meta\s*=\s*(\{.*\})\s*$", payload, re.S)
+    if assignment_match:
+        json_candidate = assignment_match.group(1).strip()
+
+    if json_candidate.startswith("{") and json_candidate.endswith("}"):
+        try:
+            parsed = json.loads(json_candidate)
+        except json.JSONDecodeError:
+            parsed = None
+            try:
+                import ast
+                parsed = ast.literal_eval(json_candidate)
+            except Exception:
+                parsed = None
+
+        if isinstance(parsed, dict):
+            image_meta = parsed
+            click.echo("[META] Metadonnees visuelles detectees et chargees (image_meta).")
+
     full_prompt = f"speckit vibe-design : {raw_prompt}"
     try:
         from core.graph import AgentState
@@ -1109,6 +1136,7 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
             "constitution_content": constitution_content,
             "user_instruction": full_prompt,
             "target_task": "Vibe Design Extraction",
+            "image_meta": image_meta or {},
             "pattern_vision": {},
             "component_manifest": {},
             "project_brief": {},
@@ -1135,7 +1163,6 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
         
         # Smart Update de la Constitution
         if constitution_content:
-            import re
             ds_style = state.get("design_system", {}).get("style", "premium")
             ds_tokens = state.get("pattern_vision", {}).get("tokens", {}).get("colors", {}).keys()
             tokens_str = ", ".join(ds_tokens) if ds_tokens else "primary, secondary, accent"

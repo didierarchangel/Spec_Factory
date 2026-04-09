@@ -103,8 +103,12 @@ class PatternVisionDetector:
             response = self.model.invoke([HumanMessage(content=f"{system_prompt}\n\nTexte: {prompt}")])
             self.logger.info(f"LLM response: {response}")
 
-            # Extraction JSON robuste
-            json_str = re.search(r"(\{.*\})", response.content.replace("\n", " "), re.DOTALL).group(1)
+            # Extraction JSON robuste (evite l'acces .group sur un match potentiellement None)
+            response_text = response.content if isinstance(response.content, str) else str(response.content)
+            json_match = re.search(r"(\{.*\})", response_text.replace("\n", " "), re.DOTALL)
+            if not json_match:
+                raise ValueError("No JSON object found in LLM response content.")
+            json_str = json_match.group(1)
             return json.loads(json_str)
         except Exception as e:
             self.logger.error(f"Erreur LLM: {e}. Bascule sur l'extraction manuelle.")
@@ -168,7 +172,6 @@ class PatternVisionDetector:
                     self.logger.info(f"Palette overridden from meta STYLE (color {k}): {v}")
                     
         return p
-
 
 
 
