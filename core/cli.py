@@ -4,6 +4,7 @@
 
 import click
 import os
+import sys
 import json
 import shutil
 from pathlib import Path
@@ -36,6 +37,25 @@ import re
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+_RAW_CLICK_ECHO = click.echo
+
+def _sanitize_terminal_text(message: Any) -> Any:
+    """Best-effort sanitization for legacy consoles (cp1252, etc.)."""
+    if not isinstance(message, str):
+        return message
+    stdout_encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        message.encode(stdout_encoding)
+        return message
+    except UnicodeEncodeError:
+        return message.encode(stdout_encoding, errors="replace").decode(stdout_encoding, errors="replace")
+
+def _safe_click_echo(message: Any = None, **kwargs: Any):
+    sanitized = _sanitize_terminal_text(message)
+    return _RAW_CLICK_ECHO(sanitized, **kwargs)
+
+click.echo = _safe_click_echo
+
 # Désactiver les logs verbeux des bibliothèques externes (comme httpx et google_genai)
 # pour ne pas polluer le terminal de l'utilisateur avec les retries 503
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -45,15 +65,15 @@ logging.getLogger("langchain_core").setLevel(logging.ERROR)
 # Configuration des chemins par défaut
 DEFAULT_PROJECT_NAME = "SpecKit-App"
 
-# 🛡️ CIRCUIT BREAKER - Global LLM Failure Threshold
+# Safety CIRCUIT BREAKER - Global LLM Failure Threshold
 MAX_LLM_FAILURES = 2
 MAX_GRAPH_FAILURES = 3
 
 # ============================================================
-# 🔧 ROUTEURS BACKEND & FRONTEND (GÉNÉRATEURS)
+# Setup ROUTEURS BACKEND & FRONTEND (GÉNÉRATEURS)
 # ============================================================
 
-# 🗄️ Configurations de Package.json par base de données
+# DB Configurations de Package.json par base de données
 def get_express_package_json(db_type: str = "mongodb") -> dict:
     """Génère le package.json Express selon le type de BD."""
     base_config = {
@@ -143,7 +163,7 @@ def generate_nestjs_project(target_path: Path):
     package_json = {
         "name": "backend-nestjs",
         "version": "1.0.0",
-        "type": "module",  # ✅ ESM obligatoire
+        "type": "module",  # [OK] ESM obligatoire
         "main": "dist/main.js",
         "scripts": {
             "dev": "cross-env NODE_OPTIONS='--loader ts-node/esm' nest start --watch",
@@ -171,7 +191,7 @@ def generate_nestjs_project(target_path: Path):
     
     (backend_path / "package.json").write_text(json.dumps(package_json, indent=2))
     
-    # ✅ Fichier main.ts en ESM
+    # [OK] Fichier main.ts en ESM
     main_ts = """/**
  * NestJS Main Entry Point (ESM)
  * Import: utilise la syntaxe ESM avec extensions '.js'
@@ -340,7 +360,7 @@ def generate_vue_vite_project(target_path: Path):
     (src_path / "App.vue").write_text("<template><h1>Vue + Vite</h1></template>\n")
     click.echo("[OK] Projet Vue.js (Vite) configure")
 
-# 🗺️ Mappings des générateurs (mise à jour pour supporter BD parameter)
+# Map Mappings des générateurs (mise à jour pour supporter BD parameter)
 BACKEND_GENERATORS = {
     "express": lambda target_path, db: generate_express_project(target_path, db),
     "nestjs": generate_nestjs_project,
@@ -354,12 +374,12 @@ FRONTEND_GENERATORS = {
     "vue-vite": generate_vue_vite_project
 }
 
-# 💡 Recommandations intelligentes de Backend selon Frontend
+# [INFO] Recommandations intelligentes de Backend selon Frontend
 BACKEND_RECOMMENDATIONS = {
-    "react-vite": "express",      # React classique → Express
-    "nextjs": "nestjs",           # Next.js → NestJS (TypeScript, scalable)
-    "vue-vite": "express",        # Vue → Express (léger)
-    "django-templates": "fastapi" # Django → FastAPI (Python)
+    "react-vite": "express",      # React classique -> Express
+    "nextjs": "nestjs",           # Next.js -> NestJS (TypeScript, scalable)
+    "vue-vite": "express",        # Vue -> Express (léger)
+    "django-templates": "fastapi" # Django -> FastAPI (Python)
 }
 
 def get_recommended_backend(frontend_choice: str) -> str:
@@ -519,10 +539,10 @@ def init(path, here):
     selected_frontend_id, selected_frontend_label = frontend_choices[f_choice]
     
     # ============================================================
-    # 💻 SÉLECTION BACKEND (avec recommandation intelligente)
+    # Backend SÉLECTION BACKEND (avec recommandation intelligente)
     # ============================================================
     backend_choices = {
-        "1": ("express", "Node.js (Express) ⚡ Prioritaire"),
+        "1": ("express", "Node.js (Express) [FAST] Prioritaire"),
         "2": ("nestjs", "Node.js (NestJS)"),
         "3": ("fastapi", "Python (FastAPI)"),
         "4": ("flask", "Python (Flask)")
@@ -537,7 +557,7 @@ def init(path, here):
     
     click.echo(f"\n--- Backend ({selected_frontend_label} recommande: {recommended_backend}) ---")
     for k, v in backend_choices.items(): 
-        is_recommended = " 💡" if k == recommended_idx else ""
+        is_recommended = " [INFO]" if k == recommended_idx else ""
         click.echo(f" {k}) {v[1]}{is_recommended}")
     
     default_backend_choice = recommended_idx or "1"
@@ -545,7 +565,7 @@ def init(path, here):
     selected_backend_id, selected_backend_label = backend_choices[b_choice]
     
     # ============================================================
-    # �️ SÉLECTION BASE DE DONNÉES
+    #  SÉLECTION BASE DE DONNÉES
     # ============================================================
     database_choices = {
         "1": ("mongodb", "MongoDB (NoSQL - Flexible)"),
@@ -560,9 +580,9 @@ def init(path, here):
     selected_database_id, selected_database_label = database_choices[db_choice]
     
     # ============================================================
-    # 🚀 APPELS AUX GÉNÉRATEURS (via MAPPINGS)
+    # Run APPELS AUX GÉNÉRATEURS (via MAPPINGS)
     # ============================================================
-    click.echo("\n🔧 Initialisation des structures de projet...")
+    click.echo("\nSetup Initialisation des structures de projet...")
     
     # Création de l'arborescence de base
     if selected_backend_id != "none":
@@ -602,12 +622,12 @@ def init(path, here):
         if source.exists():
             # Copie pour le FileManager (vrai Golden Template)
             shutil.copy(str(source), str(templates_dir / "tsconfig.backend.json"))
-            click.echo(f"✅ Template Backend ({selected_backend_label}) stocké localement.")
+            click.echo(f"[OK] Template Backend ({selected_backend_label}) stocké localement.")
             
             # Injection immédiate pour tsc
             target_ts = target_path / "backend" / "tsconfig.json"
             shutil.copy(str(source), str(target_ts))
-            click.echo("✅ `backend/tsconfig.json` initialisé.")
+            click.echo("[OK] `backend/tsconfig.json` initialisé.")
             
             # --- Nouveau : Configuration .env du Backend ---
             setup_backend_env_logic(target_path, selected_backend_id, selected_database_id)
@@ -624,19 +644,19 @@ def init(path, here):
         if source.exists():
             # Copie pour le FileManager
             shutil.copy(str(source), str(templates_dir / "tsconfig.frontend.json"))
-            click.echo(f"✅ Template Frontend ({selected_frontend_label}) stocké localement.")
+            click.echo(f"[OK] Template Frontend ({selected_frontend_label}) stocké localement.")
 
             # Injection immédiate pour tsc
             target_ts = target_path / "frontend" / "tsconfig.json"
             shutil.copy(str(source), str(target_ts))
-            click.echo("✅ `frontend/tsconfig.json` initialisé.")
+            click.echo("[OK] `frontend/tsconfig.json` initialisé.")
 
     # Injection du tsconfig.json.example à la racine (pour visibilité utilisateur)
     # On prend le backend par défaut pour l'exemple racine
     rootsource = factory_root / "core" / "templates" / "tsconfigs" / "tsconfig.backend.node.json"
     if rootsource.exists():
         shutil.copy(str(rootsource), str(target_path / "tsconfig.json.example"))
-        click.echo("✅ `tsconfig.json.example` généré à la racine.")
+        click.echo("[OK] `tsconfig.json.example` généré à la racine.")
 
     # Initialisation du verrou .spec-lock.json
     lock_file = target_path / ".spec-lock.json"
@@ -661,7 +681,7 @@ def init(path, here):
     
     # Création du fichier de Gouvernance (pour forcer l'IA de l'IDE à obéir)
     rules_path = target_path / ".speckit-rules"
-    rules_content = """# 🛡️ SPECKIT.FACTORY - LOI DE GOUVERNANCE
+    rules_content = """# Safety SPECKIT.FACTORY - LOI DE GOUVERNANCE
 Ce projet est régi par la Doctrine Speckit.Factory. 
 Toute IA (Gemini, Claude, Copilot) opérant dans ce dossier DOIT :
 1. Consulter `Constitution/CONSTITUTION.md` avant toute action.
@@ -679,7 +699,7 @@ Toute IA (Gemini, Claude, Copilot) opérant dans ce dossier DOIT :
     # Création du .gitignore par défaut pour le projet cible
     gitignore_path = target_path / ".gitignore"
     if not gitignore_path.exists():
-        gitignore_content = """# 🛡️ Speckit.Factory - Project GitIgnore
+        gitignore_content = """# Safety Speckit.Factory - Project GitIgnore
 .env
 .env.*
 node_modules/
@@ -689,10 +709,10 @@ build/
 *.log
 """
         gitignore_path.write_text(gitignore_content, encoding="utf-8")
-        click.echo("✅ Fichier `.gitignore` par défaut créé.")
-        click.echo("\n✨ Projet initialisé avec succès!")
-        click.echo("\n✨ Avant de passer à la prochaine étape, n'oubliez pas de configurer vos clés API dans le fichier `.env` à la racine du projet.")
-        click.echo("👉 Prochaine étape : `speckit specify \"Voici mon projet pour une application ...\"`")
+        click.echo("[OK] Fichier `.gitignore` par défaut créé.")
+        click.echo("\n Projet initialisé avec succès!")
+        click.echo("\n Avant de passer à la prochaine étape, n'oubliez pas de configurer vos clés API dans le fichier `.env` à la racine du projet.")
+        click.echo("-> Prochaine étape : `speckit specify \"Voici mon projet pour une application ...\"`")
 
 
 def setup_env_logic(target_path: Path):
@@ -700,7 +720,7 @@ def setup_env_logic(target_path: Path):
     env_example_path = target_path / ".env.example"
     env_path = target_path / ".env"
     
-    content = """# 🔑 Speckit.Factory - Clés API (Template)
+    content = """# Keys Speckit.Factory - Clés API (Template)
 # Ajoutez vos clés API ici pour activer les IA
 # NE JAMAIS COMMITTER VOTRE VRAI FICHIER .env (il est dans le .gitignore)
 
@@ -733,14 +753,14 @@ def setup_backend_env_logic(target_path: Path, backend_id: str, db_type: str = "
     
     # Template par défaut selon la BD
     if db_type == "mongodb":
-        content = """# 💻 Backend Configuration - MongoDB
+        content = """# Backend Backend Configuration - MongoDB
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/mon_projet
 JWT_SECRET=super_secret_key_à_changer_en_production
 NODE_ENV=development
 """
     elif db_type == "postgresql":
-        content = """# 💻 Backend Configuration - PostgreSQL Local
+        content = """# Backend Backend Configuration - PostgreSQL Local
 PORT=5000
 DATABASE_URL=postgresql://postgres:PASSWORD@localhost:5432/drugstoredb
 JWT_SECRET=super_secret_key_à_changer_en_production
@@ -753,7 +773,7 @@ DB_PASSWORD=PASSWORD
 DB_NAME=drugstoredb
 """
     elif db_type == "supabase":
-        content = """# 💻 Backend Configuration - Supabase (PostgreSQL Cloud)
+        content = """# Backend Backend Configuration - Supabase (PostgreSQL Cloud)
 PORT=5000
 DATABASE_URL=postgresql://postgres.PROJECT_ID:PASSWORD@db.PROJECT_ID.supabase.co:5432/postgres
 JWT_SECRET=super_secret_key_à_changer_en_production
@@ -771,13 +791,13 @@ SUPABASE_URL=https://PROJECT_ID.supabase.co
     else:
         # Fallback Node.js / MongoDB (Python pour FastAPI/Flask)
         if backend_id in ["fastapi", "flask"]:
-            content = """# 🐍 Python Backend Configuration
+            content = """# Python Python Backend Configuration
 DATABASE_URL=sqlite:///./sql_app.db
 SECRET_KEY=votre_cle_secrete_python
 DEBUG=True
 """
         else:
-            content = """# 💻 Backend Configuration
+            content = """# Backend Backend Configuration
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/mon_projet
 JWT_SECRET=super_secret_key_à_changer_en_production
@@ -791,7 +811,7 @@ NODE_ENV=development
     if not backend_env_path.exists():
         backend_env_path.write_text(content, encoding="utf-8")
     
-    click.echo(f"✅ Environnement Backend (.env pour {db_type}) initialisé.")
+    click.echo(f"[OK] Environnement Backend (.env pour {db_type}) initialisé.")
 
 @cli.command("setup-env")
 @click.option('--path', default=".", help="Chemin où créer le fichier .env.example")
@@ -1036,10 +1056,10 @@ def specify(prompt, provider, model):
     except Exception as e:
         error_msg = str(e).lower()
         if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
-            click.echo("\n⚠️  [Modal Quota Reached]")
-            click.echo("💡 Veuillez activer votre clé API ou changer de modèle.\n")
+            click.echo("\n[WARN]  [Modal Quota Reached]")
+            click.echo("[INFO] Veuillez activer votre clé API ou changer de modèle.\n")
         else:
-            click.echo(f"❌ Erreur : {e}")
+            click.echo(f"[ERROR] Erreur : {e}")
 
 @cli.command()
 @click.argument('prompt')
@@ -1064,7 +1084,7 @@ def component(prompt, provider, model):
         click.echo(f"\n[OK] NOUVELLE COMPOSANTE AJOUTEE :\n{new_step}")
         click.echo("\n[NEXT] Prochaine etape : `speckit run --component ID` pour l'implementer.")
     except Exception as e:
-        click.echo(f"❌ Erreur : {e}")
+        click.echo(f"[ERROR] Erreur : {e}")
 
 @cli.command()
 @click.argument('arg_prompt', required=False)
@@ -1092,10 +1112,10 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
     # Tentative de detection automatique des metadonnees image
     # Formats supportes:
     # 1) JSON pur: {"detected_components": [...]}
-    # 2) Assignation Python: image_meta = {...}
+    # 2) Assignation Python: image_meta = {...} (ou image-meta = {...})
     payload = raw_prompt.strip()
     json_candidate = payload
-    assignment_match = re.match(r"^\s*image_meta\s*=\s*(\{.*\})\s*$", payload, re.S)
+    assignment_match = re.match(r"^\s*image(?:_|-)meta\s*=\s*(\{.*\})\s*$", payload, re.S)
     if assignment_match:
         json_candidate = assignment_match.group(1).strip()
 
@@ -1112,7 +1132,7 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
 
         if isinstance(parsed, dict):
             image_meta = parsed
-            click.echo("[META] Metadonnees visuelles detectees et chargees (image_meta).")
+            click.echo("[META] Metadonnees visuelles detectees et chargees (image_meta/image-meta).")
 
     full_prompt = f"speckit vibe-design : {raw_prompt}"
     try:
@@ -1145,10 +1165,10 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
             "current_step": "design_extraction"
         }
         
-        click.echo(" ↳ [AI] Detection des patterns visuels (Vibe)...")
+        click.echo(" -> [AI] Detection des patterns visuels (Vibe)...")
         state.update(graph_manager.pattern_vision_node(state)) # type: ignore
         
-        click.echo(" ↳ [AI] Generation du Design System...")
+        click.echo(" -> [AI] Generation du Design System...")
         state.update(graph_manager.design_system_node(state)) # type: ignore
         
         # PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
@@ -1159,7 +1179,7 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
         if tokens:
             with open(tokens_path, "w", encoding="utf-8") as f:
                 yaml.dump(tokens, f, default_flow_style=False)
-            click.echo(f" ↳ [SAVE] Tokens sauvegardes dans {tokens_path}")
+            click.echo(f" -> [SAVE] Tokens sauvegardes dans {tokens_path}")
         
         # Smart Update de la Constitution
         if constitution_content:
@@ -1177,7 +1197,7 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
                 new_const = constitution_content + "\n\n" + new_design_block
                 
             const_path.write_text(new_const, encoding="utf-8")
-            click.echo(" ↳ [UPDATE] Constitution mise a jour intelligemment (sans effacer le metier).")
+            click.echo(" -> [UPDATE] Constitution mise a jour intelligemment (sans effacer le metier).")
         click.echo("")
         click.echo("[OK] [VIBE DESIGN MAKER] EXTRACTION REUSSIE !")
         click.echo(f"[OK] Tokens visuels sauvegardes dans `{tokens_path}`.")
@@ -1234,10 +1254,10 @@ def plan(provider, model):
     except Exception as e:
         error_msg = str(e).lower()
         if any(keyword in error_msg for keyword in ["authentication", "auth", "api_key", "quota", "rate_limit", "resource_exhausted", "401", "429"]):
-            click.echo("\n⚠️  [Modal Quota Reached]")
-            click.echo("💡 Veuillez activer votre clé API ou changer de modèle.\n")
+            click.echo("\n[WARN]  [Modal Quota Reached]")
+            click.echo("[INFO] Veuillez activer votre clé API ou changer de modèle.\n")
         else:
-            click.echo(f"❌ Erreur : {e}")
+            click.echo(f"[ERROR] Erreur : {e}")
 
 @cli.command()
 def status():
@@ -1360,7 +1380,7 @@ def run(task, component, provider, model, instruction):
             for output in graph_manager.app.stream(initial_state):  # type: ignore
                 graph_iteration += 1
                 
-                # 🛡️ CIRCUIT BREAKER : Check LLM failure threshold
+                # Safety CIRCUIT BREAKER : Check LLM failure threshold
                 llm_failures = final_state.get("llm_failures", 0)
                 if llm_failures >= MAX_LLM_FAILURES:
                     click.echo(f"\n[STOP] Circuit breaker active : {llm_failures} defaillances LLM detectees.")
@@ -1412,7 +1432,7 @@ def run(task, component, provider, model, instruction):
         audit_approved = final_state.get("validation_status") == "APPROUVÉ"
         fatal_error = final_state.get("fatal_error", False)
         
-        # 🛑 Check if run was aborted due to fatal error
+        # [STOP] Check if run was aborted due to fatal error
         if fatal_error:
             click.echo("\n" + "!"*50)
             click.echo("[STOP] EXECUTION INTERROMPUE (ERREUR FATALE)")
@@ -1425,26 +1445,26 @@ def run(task, component, provider, model, instruction):
             click.echo("\n" + "="*50)
             click.echo("[SAFE]  RAPPORT D'AUDIT SPECKIT")
             click.echo("="*50)
-            click.echo(f"⭐ Score : {final_state.get('score', 'N/A')}")
-            click.echo(f"✅ Points forts : {final_state.get('points_forts', 'N/A')}")
-            click.echo(f"⚠️  Alertes : {final_state.get('alertes', 'Aucune')}")
-            click.echo(f"📊 Sous-tâches : {checked_count}/{total_count}")
+            click.echo(f"[SCORE] Score : {final_state.get('score', 'N/A')}")
+            click.echo(f"[OK] Points forts : {final_state.get('points_forts', 'N/A')}")
+            click.echo(f"[WARN]  Alertes : {final_state.get('alertes', 'Aucune')}")
+            click.echo(f"[STATS] Sous-tâches : {checked_count}/{total_count}")
             click.echo("="*50 + "\n")
 
             # Les fichiers sont déjà sur disque grâce à persist_node
             code = final_state.get("code_to_verify", "")
             if code:
-                click.echo("💾 Fichiers déjà persistés par le pipeline.")
+                click.echo("[SAVE] Fichiers déjà persistés par le pipeline.")
             else:
-                click.echo("⚠️ Aucun code généré trouvé.")
+                click.echo("[WARN] Aucun code généré trouvé.")
             
             # Mise à jour du statut avec synthèse pour l'historique
-            synthesis = f"⭐ Score : {final_state.get('score', 'N/A')}\n"
-            synthesis += f"✅ Points forts : {final_state.get('points_forts', 'N/A')}\n"
-            synthesis += f"⚠️ Alertes : {final_state.get('alertes', 'Aucune')}"
+            synthesis = f"[SCORE] Score : {final_state.get('score', 'N/A')}\n"
+            synthesis += f"[OK] Points forts : {final_state.get('points_forts', 'N/A')}\n"
+            synthesis += f"[WARN] Alertes : {final_state.get('alertes', 'Aucune')}"
             
             manager_etapes.mark_step_as_completed(target_id, synthesis=synthesis)
-            click.echo(f"✅ Tâche {target_id} marquée comme terminée dans etapes.md")
+            click.echo(f"[OK] Tâche {target_id} marquée comme terminée dans etapes.md")
             
             # Mise à jour du verrou .spec-lock.json
             lock_file = Path(".spec-lock.json")
@@ -1459,10 +1479,10 @@ def run(task, component, provider, model, instruction):
                 except Exception as e:
                     logger.error(f"Erreur lors de la mise à jour du lock : {e}")
             
-            click.echo(f"\n✨ Tâche {target_id} terminée avec succès.")
+            click.echo(f"\n Tâche {target_id} terminée avec succès.")
         else:
             click.echo("\n" + "!"*50)
-            click.echo("❌ ÉCHEC DE L'AUDIT" if not audit_approved else "⚠️ SUCCÈS PARTIEL (Erreurs au Build)")
+            click.echo("[ERROR] ÉCHEC DE L'AUDIT" if not audit_approved else "[WARN] SUCCÈS PARTIEL (Erreurs au Build)")
             click.echo("!"*50)
             if not audit_approved:
                 click.echo(f"Raison Audit : {final_state.get('alertes', 'Aucune alerte')}")
@@ -1474,8 +1494,8 @@ def run(task, component, provider, model, instruction):
                 
             # Loguer les erreurs TypeScript brutes pour que l'utilisateur puisse les voir
             terminal_errors = str(final_state.get('terminal_diagnostics', ''))
-            if terminal_errors and "❌ ÉCHEC" in terminal_errors:
-                click.echo("\n🔍 DÉTAILS DES ERREURS TYPESCRIPT :")
+            if terminal_errors and "[ERROR] ÉCHEC" in terminal_errors:
+                click.echo("\n[DETAILS] DÉTAILS DES ERREURS TYPESCRIPT :")
                 click.echo("-" * 40)
                 click.echo(terminal_errors)
                 click.echo("-" * 40)
@@ -1485,26 +1505,26 @@ def run(task, component, provider, model, instruction):
     except Exception as e:
         error_msg = str(e).upper()
         
-        # 🛡️ CRITICAL ERROR HANDLING - LLM Down Detection
+        # Safety CRITICAL ERROR HANDLING - LLM Down Detection
         if "RESOURCE_EXHAUSTED" in error_msg or "QUOTA" in error_msg:
-            click.echo("\n" + "⛔"*25)
-            click.echo("⛔ LLM QUOTA DÉPASSÉ - ARRÊT IMMÉDIAT")
-            click.echo("⛔"*25)
+            click.echo("\n" + "[STOP]"*25)
+            click.echo("[STOP] LLM QUOTA DÉPASSÉ - ARRÊT IMMÉDIAT")
+            click.echo("[STOP]"*25)
             click.echo(f"Provider : {provider}")
             click.echo("Opération : Suspendre pour 24h ou changer de provider")
             click.echo("Alternatives : --provider anthropic, --provider openai, --provider deepseek")
-            click.echo("⛔"*25 + "\n")
+            click.echo("[STOP]"*25 + "\n")
             
         elif "AUTHENTICATION" in error_msg or "API_KEY" in error_msg or "401" in error_msg:
-            click.echo("\n" + "⚠️ "*25)
-            click.echo("⚠️  AUTHENTIFICATION ÉCHOUÉE")
-            click.echo("⚠️ "*25)
+            click.echo("\n" + "[WARN] "*25)
+            click.echo("[WARN]  AUTHENTIFICATION ÉCHOUÉE")
+            click.echo("[WARN] "*25)
             click.echo(f"Provider : {provider}")
             click.echo("Action : Vérifiez votre clé API dans .env")
-            click.echo("⚠️ "*25 + "\n")
+            click.echo("[WARN] "*25 + "\n")
             
         else:
-            click.echo(f"\n❌ ERREUR lors de l'exécution : {e}")
+            click.echo(f"\n[ERROR] ERREUR lors de l'exécution : {e}")
             logger.exception("Détails complets de l'erreur :")
             
     finally:
