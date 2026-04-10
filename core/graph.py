@@ -44,6 +44,34 @@ DEPRECATED_PACKAGES = {
     "react-dom/test-utils": "@testing-library/react"           # Ancien pattern
 }
 
+# --- Packages de tooling a forcer en devDependencies + latest ---
+TOOLING_PACKAGES = {
+    "typescript",
+    "vite",
+    "vite-plugin-eslint",
+    "eslint",
+    "prettier",
+    "tailwindcss",
+    "postcss",
+    "autoprefixer",
+    "vitest",
+    "jest",
+    "ts-jest",
+    "ts-node",
+    "ts-node-dev",
+    "nodemon",
+    "cross-env",
+    "prisma",
+}
+
+TOOLING_PREFIXES = (
+    "@types/",
+    "@vitejs/",
+    "vite-plugin-",
+    "eslint-",
+    "@testing-library/",
+)
+
 # --- Extraction des keywords semantiques d'une tache ---
 _BOILERPLATE_WORDS = {
     "setup", "config", "create", "init", "add", "update",
@@ -2069,6 +2097,68 @@ ReactDOM.createRoot(rootElement).render(
         }
         return types_mapping.get(pkg_name)
 
+    def _is_tooling_dependency(self, pkg_name: str) -> bool:
+        """Retourne True si le package est un outil de build/lint/test (dev-only)."""
+        if pkg_name in TOOLING_PACKAGES:
+            return True
+        return any(pkg_name.startswith(prefix) for prefix in TOOLING_PREFIXES)
+
+    def _sanitize_package_manifest(self, pkg_path: Path) -> list[str]:
+        """
+        Nettoie package.json avant installation:
+        - force les outils en devDependencies
+        - force `latest` pour les outils (anti-version hallucinee)
+        - force vite-plugin-eslint en devDependencies + latest
+        """
+        changes: list[str] = []
+
+        if not pkg_path.exists():
+            return changes
+
+        try:
+            pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"[WARN] Impossible de parser {pkg_path}: {e}")
+            return changes
+
+        dependencies = pkg_data.get("dependencies") or {}
+        dev_dependencies = pkg_data.get("devDependencies") or {}
+
+        if not isinstance(dependencies, dict):
+            dependencies = {}
+        if not isinstance(dev_dependencies, dict):
+            dev_dependencies = {}
+
+        packages = set(dependencies.keys()) | set(dev_dependencies.keys())
+
+        def force_dev_latest(package_name: str, reason: str) -> None:
+            if package_name in dependencies:
+                old = dependencies.pop(package_name)
+                changes.append(
+                    f"{package_name}: moved dependencies -> devDependencies ({reason}, old={old})"
+                )
+            old_dev = dev_dependencies.get(package_name)
+            if old_dev != "latest":
+                dev_dependencies[package_name] = "latest"
+                changes.append(
+                    f"{package_name}: version normalized to latest ({reason}, old={old_dev})"
+                )
+
+        for package_name in packages:
+            if package_name == "vite-plugin-eslint":
+                force_dev_latest(package_name, "critical vite plugin policy")
+                continue
+
+            if self._is_tooling_dependency(package_name):
+                force_dev_latest(package_name, "tooling package")
+
+        if changes:
+            pkg_data["dependencies"] = dependencies
+            pkg_data["devDependencies"] = dev_dependencies
+            pkg_path.write_text(json.dumps(pkg_data, indent=2) + "\n", encoding="utf-8")
+
+        return changes
+
     def validate_dependency_node(self, state: AgentState) -> dict:
         """
         Valide et repare les dependances AVANT npm install.
@@ -2097,6 +2187,11 @@ ReactDOM.createRoot(rootElement).render(
                     pkg_path = target_dir / "package.json"
                     if not pkg_path.exists():
                         continue
+
+                    sanitized_changes = self._sanitize_package_manifest(pkg_path)
+                    if sanitized_changes:
+                        logger.info(f"[CLEAN] package.json sanitise ({len(sanitized_changes)} regles)")
+                        fixed_issues.extend(sanitized_changes)
                     
                     # ? UTILISER LE SCANNER pour detecter les vraies dependances
                     scanner = SemanticScanner(str(target_dir))
@@ -2141,8 +2236,16 @@ ReactDOM.createRoot(rootElement).render(
                             continue
                             
                         # Determiner si c'est une dev dependency
-                        is_dev = any(pkg.startswith(prefix) for prefix in ["@types/", "ts-", "jest", "vitest", "supertest", "@testing-library"])
+                        is_dev = self._is_tooling_dependency(pkg) or any(
+                            pkg.startswith(prefix) for prefix in ["ts-", "supertest"]
+                        )
                         section = "devDependencies" if is_dev else "dependencies"
+                        other_section = "dependencies" if is_dev else "devDependencies"
+                        
+                        if other_section in pkg_data and pkg in pkg_data[other_section]:
+                            del pkg_data[other_section][pkg]
+                            fixed_issues.append(f"Moved {pkg} from {other_section} to {section}")
+                            logger.info(f"[MOVE] Deplace {pkg}: {other_section} -> {section}")
                         
                         if section not in pkg_data:
                             pkg_data[section] = {}
@@ -2232,6 +2335,10 @@ ReactDOM.createRoot(rootElement).render(
             logger.warning(f"[WARN] package.json non trouve dans {target_dir}")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
+
+        sanitized_changes = self._sanitize_package_manifest(pkg_path)
+        if sanitized_changes:
+            logger.info(f"[CLEAN] package.json pre-install sanitise ({len(sanitized_changes)} regles)")
         
         # ? DETECTION STATIQUE: Scanner = SOURCE DE VERITE
         # Le scanner analyse les imports REELLEMENT utilises dans le code
@@ -2317,8 +2424,12 @@ ReactDOM.createRoot(rootElement).render(
             logger.warning("[RUN] Installation de base (npm install global) car node_modules est absent...")
             install_args = [npm_path, "install"]
         else:
-            logger.warning(f"[RUN] Installation de {len(valid_packages)} modules valides: {valid_packages}...")
-            install_args = [npm_path, "install"] + valid_packages
+            install_targets = [
+                f"{pkg}@latest" if self._is_tooling_dependency(pkg) else pkg
+                for pkg in valid_packages
+            ]
+            logger.warning(f"[RUN] Installation de {len(valid_packages)} modules valides: {install_targets}...")
+            install_args = [npm_path, "install"] + install_targets
         
         # [SAFE] Tracker les tentatives avant d'essayer
         state["attempted_installs"] = attempted + list(set(filtered_missing))
@@ -2341,6 +2452,8 @@ ReactDOM.createRoot(rootElement).render(
                 logger.error(f"[ERROR] Echec npm install (code {result.returncode})")
                 if result.stderr:
                     logger.error(f"   Diagnostic npm: {result.stderr.strip()}")
+                state["missing_modules"] = filtered_missing
+                return state  # type: ignore[return-value]
             else:
                 logger.info(f"[OK] Commande npm install terminee avec succes.")
                 # Verification post-install physique
@@ -2371,8 +2484,7 @@ ReactDOM.createRoot(rootElement).render(
             state["installed_modules"] = installed
         except Exception as e:
             logger.error(f"[WARN] Echec installation modules {filtered_missing}: {e}")
-            # Meme en cas d'erreur, effacer pour eviter les boucles
-            state["missing_modules"] = []
+            state["missing_modules"] = filtered_missing
 
         return state  # type: ignore[return-value]
 

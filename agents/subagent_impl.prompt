@@ -460,7 +460,11 @@ devDependencies
 
 Utilise toujours des versions FIXES.
 **INTERDICTION FORMELLE** d'inventer ou de deviner des versions.
-Si tu n'es pas sûr de la version d'une bibliothèque, utilise une version stable connue (ex: express 4.19.2, mongoose 8.3.1) ou réfère-toi à la Constitution.
+Si la version est explicitement présente dans la Constitution ou déjà confirmée dans le projet, conserve cette version fixe (sans `^` ni `~`).
+Si la version n'est PAS confirmée:
+- pour les packages de tooling (`vite`, `vite-plugin-*`, `eslint*`, `prettier`, `tailwindcss`, `postcss`, `autoprefixer`, `typescript`, `@types/*`) utilise `latest`
+- pour `vite-plugin-eslint`, force **devDependencies** + `latest`
+- n'invente jamais un patch/minor (ex: `3.2.1`) au hasard
 
 Exemple :
 
@@ -475,11 +479,11 @@ RÈGLE 7.1 : COHÉRENCE SCRIPTS / DÉPENDANCES
 
 Chaque commande utilisée dans "scripts" (ex: `tsc`, `jest`, `eslint`) doit correspondre à un outil installé dans `devDependencies`. 
 **Interdiction formelle** d'ajouter un script si l'outil n'est pas déjà autorisé dans la Constitution.
-Si un outil autorisé est utilisé en script mais absent du `package.json`, tu DOIS l'ajouter dans `devDependencies` avec une version fixe.
+Si un outil autorisé est utilisé en script mais absent du `package.json`, tu DOIS l'ajouter dans `devDependencies` avec une version autorisée (fixe si connue, sinon `latest` pour tooling).
 
 RÈGLE 7.2 : SYNCHRONISATION CONSTITUTION
 
-Si tu modifies le `package.json` pour ajouter ou mettre à jour une dépendance, tu DOIS également mettre à jour le fichier `Constitution/CONSTITUTION.md` de l'application (si présent) dans les sections techniques (1.1 Backend, 1.2 Frontend, 1.3 Outillage) pour y inscrire la version fixe exacte. 
+Si tu modifies le `package.json` pour ajouter ou mettre à jour une dépendance, tu DOIS également mettre à jour le fichier `Constitution/CONSTITUTION.md` de l'application (si présent) dans les sections techniques (1.1 Backend, 1.2 Frontend, 1.3 Outillage) pour y inscrire la version réellement retenue (fixe confirmée ou `latest` pour tooling). 
 Ceci garantit que la Constitution reste la source de vérité actualisée avec les versions réellement installées.
 
 Règle 8 : INTERDICTION HORS CONSTITUTION
@@ -519,22 +523,24 @@ Règle 11 : CONVENTION DTO / ZOD (STRICTE)
 # RÈGLE 12.1 : CLASSIFICATION DES DÉPENDANCES (STRICTE)
 Tu dois classer les paquets NPM avec rigueur :
 - **Production (`dependencies`)** : express, mongoose, jsonwebtoken, bcryptjs, cors, dotenv, express-validator, morgan, helmet, axios, react-hook-form, zod, @hookform/resolvers, zustand.
-- **Développement (`devDependencies`)** : typescript, ts-node, nodemon, eslint, prettier, jest, ts-jest, vitest, supertest, cypress.
+- **Développement (`devDependencies`)** : typescript, ts-node, nodemon, eslint, prettier, jest, ts-jest, vitest, supertest, cypress, vite, vite-plugin-eslint, @vitejs/plugin-react, tailwindcss, postcss, autoprefixer.
 - **TYPES** : TOUT paquet commençant par `@types/` (ex: `@types/express`) **DOIT** être dans `devDependencies`.
+- **RÈGLE TOOLING** : tous les packages de tooling en `devDependencies` doivent utiliser `latest` sauf version explicitement imposée par la Constitution.
 
 # RÈGLE 12.1B : TYPESCRIPT OBLIGATOIRE POUR BACKEND
 **RÈGLE ABSOLUE** : Si tu crées ou modifies `backend/package.json`, TypeScript DOIT être présent dans `devDependencies`.
-- Utilise toujours : `"typescript": "5.4.5"` (version fixe)
+- Utilise `"typescript"` avec la version imposée par la Constitution; sinon `latest`.
 - Si le script `build` est défini, il DOIT être : `"build": "tsc"`
 - Le script `start` DOIT être : `"start": "ts-node src/server.ts"` (pour éviter les erreurs d'exécution avant le build final)
 - Interdiction formelle d'oublier TypeScript: ce manque causera l'erreur "This is not the tsc command you are looking for"
 
 Règle 12 : DÉPENDANCES ET VERSIONS (STRICT)
 
-1.  **Versions FIXES** : Interdiction d'utiliser `^` ou `~`.
-    *   Correct : `"express": "4.19.2"`
-    *   Interdit : `"express": "^4.19.2"`
-2.  **Scripts et DevDeps** : Tout outil utilisé dans `scripts` (ex: `tsc`, `jest`, `eslint`) DOIT être présent dans `devDependencies` avec une version fixe.
+1.  **Aucune version inventée** : Interdiction d'inventer un numéro de version.
+    *   Si version confirmée par Constitution/projet : conserver version fixe sans `^` ni `~`
+    *   Si version non confirmée et package de tooling : utiliser `latest`
+    *   Cas critique : `vite-plugin-eslint` DOIT être en `devDependencies` avec `latest`
+2.  **Scripts et DevDeps** : Tout outil utilisé dans `scripts` (ex: `tsc`, `jest`, `eslint`) DOIT être présent dans `devDependencies` avec version conforme aux règles ci-dessus.
 3.  **Imports et Sync** : Si tu importes une lib (ex: `cors`, `morgan`), elle DOIT être dans `package.json`. NE JAMAIS importer une lib "par défaut" si elle n'est pas dans la liste des dépendances.
 
 RÈGLE 12.2 : MIDDLEWARE DE DÉBOGAGE (OBLIGATOIRE)

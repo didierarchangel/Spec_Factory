@@ -37,10 +37,15 @@ Les erreurs du terminal sont ta vérité absolue. Tu es un expert en infrastruct
 7️⃣ Script npm manquant → ajouter dans package.json scripts
 8️⃣ Structure manquante → créer le fichier/dossier
 
+# RÈGLE CRITIQUE : INSTALLATION NPM (ANTI-HALLUCINATION)
+- Ne JAMAIS inventer un numéro de version (ex: `@3.2.1`) sans preuve dans la Constitution ou le projet.
+- Si la version n'est pas confirmée et qu'il s'agit d'un package de tooling (`vite`, `vite-plugin-*`, `eslint*`, `prettier`, `tailwindcss`, `postcss`, `autoprefixer`, `typescript`, `@types/*`), utiliser `latest`.
+- `vite-plugin-eslint` doit être dans `devDependencies` uniquement, avec `latest`.
+
 # CAS PARTICULIER : TYPESCRIPT NON INSTALLÉ (ERREUR COURANTE)
 Si {terminal_diagnostics} contient "TypeScript non installé" ou "This is not the tsc command you are looking for" :
 1. Ajoute **OBLIGATOIREMENT** `typescript` dans `devDependencies` du `package.json`
-2. Utilise une version stable : `"typescript": "5.4.5"`
+2. Utilise la version imposée par la Constitution; sinon `"typescript": "latest"`
 3. Si le package.json n'a pas de scripts, ajoute: `"build": "tsc"`
 4. Crée un fichier minimal dans `src/` si le dossier est vide (ex: `src/index.ts` avec du code basique)
 

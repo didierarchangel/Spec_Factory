@@ -118,7 +118,14 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
     - `dependencies` : Uniquement packages de production (express, mongoose, etc.).
     - `devDependencies` : Outils de dev (typescript, nodemon, eslint, prettier, jest, etc.).
     - TOUT paquet `@types/*` **DOIT** être dans `devDependencies`.
-* **Note** : Toutes les dépendances (Core, Dev, Outillage) DOIVENT utiliser des versions fixes sans préfixe `^` ou `~`.
+* **Note** : Ne jamais inventer de version. Si une version est explicitement définie par la Constitution/projet, la conserver (sans `^` ou `~`). Si la version n'est pas confirmée pour un outil de tooling, utiliser `latest`.
+
+### 1.4 RÈGLE CRITIQUE - INSTALLATION NPM (ANTI-HALLUCINATION)
+Lors de l'ajout de dépendances dans `package.json` ou via CLI:
+1. Ne JAMAIS deviner/inventer une version (ex: `@3.2.1`).
+2. Utiliser systématiquement `latest` pour les outils de tooling quand la version n'est pas explicitement imposée (ex: `vite-plugin-eslint`, `eslint`, `prettier`, `tailwindcss`, `postcss`, `autoprefixer`, `typescript`, `@types/*`).
+3. `vite-plugin-eslint` doit être déclaré en `devDependencies` uniquement.
+4. Les versions avec caret (`^`) ne sont autorisées que si elles existent déjà et sont confirmées dans le contexte du projet.
 ---
 
 ## 2. RÈGLES D'ARCHITECTURE (LE SANCTUAIRE)

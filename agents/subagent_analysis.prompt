@@ -39,6 +39,7 @@ Prends en compte les éléments suivants pour ton analyse :
 - Règle 6 : **INITIALISATION NPM OBLIGATOIRE**. Si la tâche cible concerne la mise en place d'un backend ou d'un frontend (Setup), tu DOIS IMPÉRATIVEMENT inclure les deux sous-tâches suivantes au début de ta `segmentation` :
   1. `Initialiser : cd [backend|frontend] && npm init -y`
   2. `Installer les dépendances : cd [backend|frontend] && npm install ...` (avec les librairies nécessaires).
+- Règle 7 : **POLITIQUE VERSIONS NPM (ANTI-HALLUCINATION)**. Ne propose jamais une version inventée. Si la version n'est pas explicitement connue dans le contexte, utilise `latest` pour le tooling (`vite*`, `eslint*`, `prettier`, `tailwindcss`, `postcss`, `autoprefixer`, `typescript`, `@types/*`) et planifie `vite-plugin-eslint` uniquement en `devDependencies`.
 
 # INSTRUCTIONS DE SORTIE (IMPÉRATIF)
 Tu dois impérativement respecter le schéma JSON fourni.
