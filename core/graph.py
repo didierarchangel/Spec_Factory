@@ -247,6 +247,8 @@ class AgentState(TypedDict):
     previous_node_route: str  # Track which node was just executed
     state_history: List[str] | None  # History of (node_name, validation_status) pairs
     repeated_state_count: int  # Count of consecutive repeated states
+    arch_guard_last_error: str  # Last architecture guard error (for circuit-breaker)
+    arch_guard_same_error_count: int  # Number of consecutive identical arch guard errors
 
 
 class SpecGraphManager:
@@ -1310,15 +1312,66 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             }
             if p in mapping:
                 return mapping[p]
-            if p == ".prettierrc" and task_type in {"frontend", "backend"}:
-                return f"{task_type}/.prettierrc.json"
-            if p == ".eslintrc" and task_type in {"frontend", "backend"}:
-                return f"{task_type}/.eslintrc.json"
+
+            if task_type in {"frontend", "backend"}:
+                # Racine implicite -> module cible (evite .eslintrc.json a la racine)
+                root_to_module = {
+                    ".prettierrc": ".prettierrc.json",
+                    ".prettierrc.json": ".prettierrc.json",
+                    ".prettierrc.js": ".prettierrc.js",
+                    ".eslintrc": ".eslintrc.json",
+                    ".eslintrc.json": ".eslintrc.json",
+                    ".eslintrc.js": ".eslintrc.js",
+                    ".env": ".env",
+                    ".env.example": ".env.example",
+                    "package.json": "package.json",
+                    "tsconfig.json": "tsconfig.json",
+                    "tsconfig.test.json": "tsconfig.test.json",
+                    "jest.config.ts": "jest.config.ts",
+                    "jest.config.js": "jest.config.js",
+                    "vitest.config.ts": "vitest.config.ts",
+                    "vitest.config.js": "vitest.config.js",
+                    "jest.setup.ts": "jest.setup.ts",
+                    "jest.setup.js": "jest.setup.js",
+                    "nodemon.json": "nodemon.json",
+                    "vite.config.ts": "vite.config.ts",
+                    "tailwind.config.js": "tailwind.config.js",
+                    "postcss.config.js": "postcss.config.js",
+                    "next.config.ts": "next.config.ts",
+                    "next.config.js": "next.config.js",
+                    "index.html": "index.html",
+                }
+                if "/" not in p and p in root_to_module:
+                    return f"{task_type}/{root_to_module[p]}"
+                if p.startswith("src/"):
+                    return f"{task_type}/{p}"
+
             return p
+
+        def normalize_markers(code_text: str) -> tuple[str, bool]:
+            marker_pattern = re.compile(
+                r'(?m)^((?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*))'
+                r'([a-zA-Z0-9._\-/\\ ]+(?:\.[a-zA-Z0-9]+|/))(\]?.*)$'
+            )
+            changed = False
+
+            def _repl(match: re.Match[str]) -> str:
+                nonlocal changed
+                prefix, raw_path, suffix = match.group(1), match.group(2), match.group(3)
+                normalized = canonicalize_rc_path(raw_path)
+                if normalized != raw_path.replace("\\", "/").strip():
+                    changed = True
+                return f"{prefix}{normalized}{suffix}"
+
+            return marker_pattern.sub(_repl, code_text), changed
         
         # [SAFE] SECURITE : On extrait les chemins REELS des blocs de code
         # pour eviter que le LLM ne cache un fichier non autorise en l'omettant de impact_fichiers
         code = state.get("code_to_verify", "")
+        code, markers_changed = normalize_markers(code)
+        if markers_changed:
+            logger.info("[SAFE] ArchitectureGuard: marqueurs de fichiers normalises vers le module cible.")
+
         file_pattern = r'(?m)^(?://|#)\s*(?:\[DEBUT_FICHIER:\s*|Fichier\s*:\s*|File\s*:\s*)([a-zA-Z0-9._\-/\\ ]+\.[a-zA-Z0-9]+)\]?.*$'
         extracted_paths = re.findall(file_pattern, code)
         
@@ -1335,11 +1388,19 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
             
             return {
                 "arch_guard_status": "PASSED",
-                "impact_fichiers": paths
+                "impact_fichiers": paths,
+                "code_to_verify": code,
+                "arch_guard_last_error": "",
+                "arch_guard_same_error_count": 0,
             }
         except ValueError as e:
             error_msg = str(e)
             logger.error(f"[STOP] ArchitectureGuard Error: {error_msg}")
+            same_error_count = (
+                state.get("arch_guard_same_error_count", 0) + 1
+                if state.get("arch_guard_last_error", "") == error_msg
+                else 1
+            )
             
             return {
                 "arch_guard_status": "FAILED",
@@ -1350,7 +1411,11 @@ FILL the placeholders but DO NOT REMOVE the styling classes. Total fidelity is r
                     "Do not generate extensionless files like `.prettierrc`."
                 ),
                 "error_count": state.get("error_count", 0) + 1,
-                "last_error": error_msg
+                "retry_count": state.get("retry_count", 0) + 1,
+                "last_error": error_msg,
+                "arch_guard_last_error": error_msg,
+                "arch_guard_same_error_count": same_error_count,
+                "code_to_verify": code,
             }
 
     def path_guard_node(self, state: AgentState) -> dict:
@@ -4013,14 +4078,20 @@ ReactDOM.createRoot(rootElement).render(
         """Determine la route apres l'ArchitectureGuard."""
         status = state.get("arch_guard_status")
         retry_count = state.get("retry_count", 0)
+        error_count = state.get("error_count", 0)
+        same_error_count = state.get("arch_guard_same_error_count", 0)
         
         if status == "FAILED":
+            if same_error_count >= 2:
+                logger.error(f"[STOP] Circuit-breaker ArchitectureGuard: meme erreur repetee {same_error_count} fois.")
+                return "verify_node"
+
             # [SAFE] RETRY LIMIT : Prevent infinite loops
-            if retry_count >= MAX_RETRIES:
+            if retry_count >= MAX_RETRIES or error_count >= MAX_RETRIES:
                 logger.error(f"[STOP] MAX_RETRIES ({MAX_RETRIES}) reached in arch_guard. Stopping retries.")
                 return "verify_node"
             
-            logger.warning(f"[FIX] Echec de validation architecturale, retour a impl_node... (attempt {retry_count + 1}/{MAX_RETRIES})")
+            logger.warning(f"[FIX] Echec de validation architecturale, retour a impl_node... (attempt {retry_count}/{MAX_RETRIES})")
             return "impl_node"
             
         # Si la validation architecturale reussit, on passe au PathGuard, qui est directement chaine (ou conditional if needed, but we can do direct logic to next node if needed or evaluate path_guard route. Since path_guard does not have a routing edge directly specified, we assume it routes to persist_node). Wait, path_guard doesn't have an edge defined yet, let's just make sure architecture_guard passes to next step.

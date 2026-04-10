@@ -628,6 +628,15 @@ TOUT fichier doit commencer par le préfixe du module :
 [contenu du fichier]
 ```
 
+# RÈGLE 14.2 : FICHIERS CONFIG À LA RACINE DU MODULE (CRITIQUE)
+
+⚠️ Pour les fichiers de configuration, le chemin DOIT être préfixé par le module :
+- ✅ `backend/.eslintrc.json`, `backend/.prettierrc.json`, `backend/.env`, `backend/package.json`
+- ✅ `frontend/.eslintrc.json`, `frontend/.prettierrc.json`, `frontend/package.json`
+- ❌ `.eslintrc.json` (racine projet)
+- ❌ `.prettierrc.json` (racine projet)
+- ❌ `package.json` (racine projet) pour une tâche backend/frontend ciblée
+
 # PHASE OBLIGATOIRE : VALIDATION AVANT SORTIE
 
 1.  **Arborescence** : Vérifie __FILE_TREE__. Ne crée pas de fichiers en dehors de `backend/` ou `frontend/`.

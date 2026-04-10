@@ -334,6 +334,12 @@ Tu dois corriger UNIQUEMENT ce qui empêche le build de réussir :
 - Chemins de fichiers et Imports (chemins incorrects, typos)
 - Dépendances manquantes (ajout dans package.json)
 
+# RÈGLE DE CHEMINS CONFIG (CRITIQUE)
+Pour une tâche ciblée `backend` ou `frontend`, ne génère JAMAIS de fichier config à la racine projet.
+- ✅ `backend/.eslintrc.json`, `backend/.prettierrc.json`, `backend/package.json`
+- ✅ `frontend/.eslintrc.json`, `frontend/.prettierrc.json`, `frontend/package.json`
+- ❌ `.eslintrc.json`, `.prettierrc.json`, `package.json` (sans préfixe module)
+
 # INTERDICTIONS ABSOLUES
 - NE JAMAIS MODIFIER LE FICHIER `tsconfig.json`. Il est géré par le système ("Golden Template").
 - Si une erreur vient du tsconfig, tu dois ADAPTER le code source ou le package.json pour qu'ils soient compatibles avec la configuration imposée, mais ne touche pas au fichier tsconfig lui-même.
