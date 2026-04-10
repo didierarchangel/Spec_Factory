@@ -577,23 +577,37 @@ class SpecGraphManager:
         
         # 2. Parsing via LangChain JsonOutputParser
         parser = JsonOutputParser(pydantic_object=pydantic_object)
-        try:
-            parsed_json = parser.parse(json_content)
-            result.update(parsed_json)
-            # Si le code etait dans le JSON malencontreusement (ancien format), on le prend
-            if not result.get("code") and parsed_json.get("code"):
-                 result["code"] = parsed_json.get("code")
-            
-            # Nettoyage final des backticks residuels dans le code extrait
-            if result.get("code"):
-                result["code"] = re.sub(r'```[a-zA-Z0-9-]*\n?', '', result["code"])
-                result["code"] = result["code"].replace('```', '').strip()
+        parse_candidates = [json_content]
+
+        # Fallback: certains LLM renvoient {{ ... }} (template-style) au lieu de { ... }
+        if "{{" in json_content or "}}" in json_content:
+            normalized_braces = json_content.replace("{{", "{").replace("}}", "}")
+            parse_candidates.append(normalized_braces)
+
+        last_error = None
+        for idx, candidate in enumerate(parse_candidates, start=1):
+            try:
+                parsed_json = parser.parse(candidate)
+                if idx > 1:
+                    logger.warning("[FIX] JSON parsing recovered using brace normalization fallback.")
+
+                result.update(parsed_json)
+                # Si le code etait dans le JSON malencontreusement (ancien format), on le prend
+                if not result.get("code") and parsed_json.get("code"):
+                    result["code"] = parsed_json.get("code")
                 
-            return result
-        except Exception as e:
-            logger.error(f"[ERROR] Echec critique du parsing JSON : {str(e)}")
-            # On renvoie une erreur explicite pour que le noeud appelant puisse reagir
-            raise ValueError(f"Format JSON invalide ou absent dans la reponse de l'IA : {str(e)}")
+                # Nettoyage final des backticks residuels dans le code extrait
+                if result.get("code"):
+                    result["code"] = re.sub(r'```[a-zA-Z0-9-]*\n?', '', result["code"])
+                    result["code"] = result["code"].replace('```', '').strip()
+                    
+                return result
+            except Exception as e:
+                last_error = e
+
+        logger.error(f"[ERROR] Echec critique du parsing JSON : {str(last_error)}")
+        # On renvoie une erreur explicite pour que le noeud appelant puisse reagir
+        raise ValueError(f"Format JSON invalide ou absent dans la reponse de l'IA : {str(last_error)}")
 
     # --- 2. N?uds (fonctions de traitement) -------------------------------
 
@@ -606,6 +620,40 @@ class SpecGraphManager:
         ]
         task_text = f"{task_name}\n{checklist}".lower()
         return any(re.search(k, task_text) for k in frontend_keywords)
+
+    def _is_structure_only_task(self, task_name: str, checklist: str = "", user_instruction: str = "") -> bool:
+        """Detecte les taches de scaffold/structure qui ne doivent pas lancer le buildfix/deps."""
+        text = f"{task_name}\n{checklist}\n{user_instruction}".lower()
+
+        structure_markers = [
+            "structure", "dossier", "dossiers", "folder", "folders", "directory",
+            "arborescence", "scaffold", "creation_structure", "creation_dossiers",
+            ".keep", "mkdir"
+        ]
+        dependency_or_runtime_markers = [
+            "dependance", "dependency", "install", "installation", "npm install",
+            "outillage", "qualite", "eslint", "prettier", "tsconfig", "build", "test"
+        ]
+
+        has_structure_signal = any(marker in text for marker in structure_markers)
+        has_runtime_signal = any(marker in text for marker in dependency_or_runtime_markers)
+        return has_structure_signal and not has_runtime_signal
+
+    def _should_run_graphic_design(self, task_name: str, checklist: str = "", user_instruction: str = "") -> bool:
+        """Autorise GraphicDesign uniquement pour les vraies taches UI."""
+        if self._is_structure_only_task(task_name, checklist, user_instruction):
+            return False
+
+        if not self._is_frontend_task(task_name, checklist):
+            return False
+
+        text = f"{task_name}\n{checklist}\n{user_instruction}".lower()
+        ui_markers = [
+            "ui", "interface", "design", "style", "tailwind", "component",
+            "composant", "page", "layout", "screen", "hero", "card", "dashboard",
+            "form", "widget", "navbar", "sidebar"
+        ]
+        return any(marker in text for marker in ui_markers)
 
     def _is_vibe_design_task(self, task_name: str, checklist: str = "", user_instruction: str = "") -> bool:
         """Detecte l'etape d'extraction design (00_Vibe_Design_Extraction)."""
@@ -662,8 +710,15 @@ class SpecGraphManager:
         
         tokens = state.get("pattern_vision", {}).get("tokens", {})
         manifest = state.get("component_manifest", {})
-        
-        ds = self.design_system_generator.generate(tokens, manifest)
+
+        stack_prefs = self._load_stack_preferences()
+        style_name = (
+            (stack_prefs.get("design") or "").strip()
+            or str(state.get("pattern_vision", {}).get("style") or "").strip()
+            or "default-tailwind"
+        )
+
+        ds = self.design_system_generator.generate(tokens, manifest, style_name=style_name)
         
         # [SAFE] PERSISTENCE : Save as custom pattern for GraphicDesign to use
         if state.get("pattern_vision", {}).get("style") == "custom":
@@ -712,11 +767,15 @@ class SpecGraphManager:
             logger.info("[VIBE] GraphicDesign ignore: etape design extraction sans generation d'UI.")
             return {"design_spec": {"error": "Skipped (vibe-design task)", "tailwind": {}}}
         
-        # [SAFE] MANDATORY CHECK: Only run for frontend/UI related tasks
-        is_ui_task = self._is_frontend_task(state.get("target_task", ""), state.get("subtask_checklist", ""))
+        # [SAFE] MANDATORY CHECK: run only for true UI generation tasks
+        is_ui_task = self._should_run_graphic_design(
+            state.get("target_task", ""),
+            state.get("subtask_checklist", ""),
+            state.get("user_instruction", ""),
+        )
         
         if not is_ui_task:
-            logger.info("[SKIP] Skipping GraphicDesignEngine (backend task)")
+            logger.info("[SKIP] Skipping GraphicDesignEngine (non-UI/scaffold task)")
             return {"design_spec": {"error": "Skipped (non-UI)", "tailwind": {}}}
             
         # Initialisation du moteur Design (deplace APR?S le check pour eviter de charger le dataset inutilement)
@@ -1052,13 +1111,13 @@ class SpecGraphManager:
         Transforme un design_spec JSON complexe en directives claires et actionnables.
         """
         if not design_spec:
-            return "NO DESIGN SPECIFICATION PROVIDED. Use premium Tailwind defaults."
+            return "NO DESIGN SPECIFICATION PROVIDED. Use project Tailwind defaults."
             
         if design_spec.get("error") == "Skipped (non-UI)":
             return ""  # Empty for backend tasks
             
         if "error" in design_spec:
-            return "NO DESIGN SPECIFICATION PROVIDED. Use premium Tailwind defaults."
+            return "NO DESIGN SPECIFICATION PROVIDED. Use project Tailwind defaults."
         
         pattern = design_spec.get("pattern", "N/A")
         tailwind = design_spec.get("tailwind", {})
@@ -2249,6 +2308,15 @@ ReactDOM.createRoot(rootElement).render(
         Resultat: Zero hallucinations de dependances, seulement des imports reels + Types-First.
         """
         logger.info("[SCAN] Validation des dependances (avant npm install)...")
+
+        if self._is_structure_only_task(
+            state.get("target_task", ""),
+            state.get("subtask_checklist", ""),
+            state.get("user_instruction", ""),
+        ):
+            logger.info("[SKIP] Validation dependances ignoree (tache structure/scaffold).")
+            state["missing_modules"] = []
+            return state  # type: ignore[return-value]
         
         try:
             from utils.scanner import SemanticScanner
@@ -2387,6 +2455,16 @@ ReactDOM.createRoot(rootElement).render(
         from utils.scanner import SemanticScanner
         
         logger.info("? Installation des dependances (npm install)...")
+
+        if self._is_structure_only_task(
+            state.get("target_task", ""),
+            state.get("subtask_checklist", ""),
+            state.get("user_instruction", ""),
+        ):
+            logger.info("[SKIP] npm install ignore (tache structure/scaffold).")
+            state["missing_modules"] = []
+            state["scanner_missing_modules"] = []
+            return state  # type: ignore[return-value]
         
         # --- [SAFE] ANTI-BOUCLE NIVEAU 1: Verifier dep_install_attempts ---
         attempts = state.get("dep_install_attempts", 0)
@@ -3555,6 +3633,14 @@ ReactDOM.createRoot(rootElement).render(
         from pathlib import Path
         
         logger.info("? Analyse proactive des dependances (Dependency Resolver)...")
+
+        if self._is_structure_only_task(
+            state.get("target_task", ""),
+            state.get("subtask_checklist", ""),
+            state.get("user_instruction", ""),
+        ):
+            logger.info("[SKIP] Dependency Resolver ignore (tache structure/scaffold).")
+            return {"missing_modules": []}
         
         target_module = state.get("target_module")
         search_dirs = []
@@ -3824,9 +3910,22 @@ ReactDOM.createRoot(rootElement).render(
         
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
         has_missing_modules = len(llm_missing) > 0
-        
+        is_structure_task = self._is_structure_only_task(
+            state.get("target_task", ""),
+            state.get("subtask_checklist", ""),
+            state.get("user_instruction", ""),
+        )
+
         if state.get("error_count", 0) >= MAX_RETRIES and (has_tsc_errors_in_target or has_structure_errors or has_missing_modules):
             logger.error(f"[STOP] Limite de tentatives atteinte ({MAX_RETRIES}).")
+            return "verify_node"
+
+        # Taches structure/scaffold: ne jamais lancer de buildfix/dependency loop.
+        if is_structure_task:
+            if has_structure_errors:
+                logger.warning("[FIX] Tache structure: structure invalide, route vers verify_node.")
+            else:
+                logger.info("[OK] Tache structure: buildfix/deps ignores, route vers verify_node.")
             return "verify_node"
             
         if has_missing_modules:

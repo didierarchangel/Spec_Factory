@@ -9,7 +9,11 @@ class PatternEngine:
         self._load_all_patterns(dataset_dir)
 
     def _load_all_patterns(self, dataset_dir):
-        """Loads pattern files from the dataset directory, keeping only premium assets."""
+        """Loads pattern files from the dataset directory.
+
+        Every JSON pattern file is accepted (except index/rules helpers) so the
+        runtime can honor user-selected design systems instead of forcing one.
+        """
         path = Path(dataset_dir)
         if not path.exists():
             return
@@ -17,14 +21,16 @@ class PatternEngine:
         for json_file in path.glob("*.json"):
             if json_file.name in ("generator_rules.json", "pattern_index.json"):
                 continue
-            
-            if "standard" in json_file.stem.lower():
-                continue
 
             # Déduire le système depuis le nom de fichier
             file_system = None
-            if "premium" in json_file.stem.lower():
-                file_system = "premium"
+            stem = json_file.stem.lower()
+            if "_" in stem:
+                file_system = stem.split("_")[0]
+            elif "-" in stem:
+                file_system = stem.split("-")[0]
+            elif stem:
+                file_system = stem
             
             try:
                 with open(json_file, encoding='utf-8') as f:

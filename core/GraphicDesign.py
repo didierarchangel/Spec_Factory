@@ -64,13 +64,17 @@ class GraphicDesign:
             patterns = self.engine.patterns[:5]
             
         if preferred_system:
-            # Filter using the SYSTEM field
-            filtered = [p for p in patterns if p.get("system") == preferred_system.lower()]
+            preferred_system = preferred_system.lower()
+            # Filter using the SYSTEM field (or system-less patterns as neutral fallback)
+            filtered = [
+                p for p in patterns
+                if p.get("system", "").lower() == preferred_system or not p.get("system")
+            ]
             if filtered:
                 patterns = filtered
                 logger.info(f"   ✅ Using patterns from preferred system: {preferred_system}")
             else:
-                logger.warning(f"⚠️ No patterns found for system: {preferred_system} in category: {category}")
+                logger.warning(f"⚠️ No patterns found for system: {preferred_system} in category: {category}. Falling back to available patterns.")
                 patterns = self.engine.patterns[:5]
 
         # Rank and return the best one
@@ -204,16 +208,21 @@ class GraphicDesign:
         category = self.parse_intent(prompt)
         logger.info(f"   📋 Intent detected: {category}")
         
-        # 🔍 Design system detection (premium only)
-        system = "premium"
+        # 🔍 Design system detection (user-driven, no forced premium)
+        system = "default"
         framework = "react" # Default
         
         # 1. Check prompt for preference
-        if any(kw in prompt.lower() for kw in ["premium", "business", "clean", "pro", "modern"]):
+        prompt_lower = prompt.lower()
+        if any(kw in prompt_lower for kw in ["premium", "business", "clean", "pro", "modern"]):
             system = "premium"
-            logger.info(f"   ✅ Premium system detected in prompt")
-        elif any(kw in prompt.lower() for kw in ["legacy", "classic", "standard"]):
-            logger.info(f"   ⚠️ Design hints for legacy/standard layouts ignored; premium remains the design system")
+            logger.info("   ✅ Design system detected in prompt: premium")
+        elif any(kw in prompt_lower for kw in ["legacy", "classic", "standard"]):
+            system = "standard"
+            logger.info("   ✅ Design system detected in prompt: standard")
+        elif "custom" in prompt_lower:
+            system = "custom"
+            logger.info("   ✅ Design system detected in prompt: custom")
         
         # 2. Check keyword for framework hints
         if "vue" in prompt.lower(): framework = "vue"
@@ -230,10 +239,7 @@ class GraphicDesign:
                     framework = stack.get("framework", framework)
                     lock_design = stack.get("design")
                     if lock_design:
-                        if lock_design.lower() == "premium":
-                            system = "premium"
-                        else:
-                            logger.warning(f"⚠️ Design system '{lock_design}' in lock not supported; continuing with premium.")
+                        system = lock_design.lower().strip()
                     logger.info(f"   ✅ Specs from lock: system={system}, framework={framework}")
             except Exception as e:
                 logger.debug(f"   ℹ️ Could not read .spec-lock.json: {e}")

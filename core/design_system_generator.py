@@ -13,7 +13,7 @@ class DesignSystemGenerator:
         self,
         tokens: Dict[str, Any],
         components_manifest: Dict[str, Any],
-        style_name: str = "premium-tailwind",
+        style_name: str = "default-tailwind",
     ) -> Dict[str, Any]:
         """Génère le design system complet."""
         ds_components = self._build_components(components_manifest.get("components", []))
