@@ -72,6 +72,13 @@ TOOLING_PREFIXES = (
     "@testing-library/",
 )
 
+# Standards quand l'IA ecrit directement package.json
+PACKAGE_JSON_CARET_STANDARDS = {
+    "react": "^18.0.0",
+    "vite": "^5.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+}
+
 # --- Extraction des keywords semantiques d'une tache ---
 _BOILERPLATE_WORDS = {
     "setup", "config", "create", "init", "add", "update",
@@ -1890,8 +1897,8 @@ export default app;
                         "preview": "vite preview"
                     },
                     "dependencies": {
-                        "react": "^18.2.0",
-                        "react-dom": "^18.2.0",
+                        "react": "^18.0.0",
+                        "react-dom": "^18.0.0",
                         "react-router-dom": "^6.14.0",
                         "axios": "^1.4.0",
                         "lucide-react": "^0.260.0"
@@ -1900,7 +1907,7 @@ export default app;
                         "@types/react": "^18.2.0",
                         "@types/react-dom": "^18.2.0",
                         "@vitejs/plugin-react": "^4.0.0",
-                        "vite": "^4.4.0",
+                        "vite": "^5.0.0",
                         "typescript": "^5.0.2",
                         "tailwindcss": "latest",
                         "postcss": "latest",
@@ -2106,6 +2113,7 @@ ReactDOM.createRoot(rootElement).render(
     def _sanitize_package_manifest(self, pkg_path: Path) -> list[str]:
         """
         Nettoie package.json avant installation:
+        - applique les standards caret pour ecriture package.json (react/vite/plugin-react)
         - force les outils en devDependencies
         - force `latest` pour les outils (anti-version hallucinee)
         - force vite-plugin-eslint en devDependencies + latest
@@ -2131,26 +2139,58 @@ ReactDOM.createRoot(rootElement).render(
 
         packages = set(dependencies.keys()) | set(dev_dependencies.keys())
 
-        def force_dev_latest(package_name: str, reason: str) -> None:
-            if package_name in dependencies:
-                old = dependencies.pop(package_name)
+        def force_version(
+            package_name: str, target_section: str, version: str, reason: str
+        ) -> None:
+            source_section = "devDependencies" if target_section == "dependencies" else "dependencies"
+            source_dict = dev_dependencies if source_section == "devDependencies" else dependencies
+            target_dict = dev_dependencies if target_section == "devDependencies" else dependencies
+
+            if package_name in source_dict:
+                old = source_dict.pop(package_name)
                 changes.append(
-                    f"{package_name}: moved dependencies -> devDependencies ({reason}, old={old})"
-                )
-            old_dev = dev_dependencies.get(package_name)
-            if old_dev != "latest":
-                dev_dependencies[package_name] = "latest"
-                changes.append(
-                    f"{package_name}: version normalized to latest ({reason}, old={old_dev})"
+                    f"{package_name}: moved {source_section} -> {target_section} ({reason}, old={old})"
                 )
 
+            old_target = target_dict.get(package_name)
+            if old_target != version:
+                target_dict[package_name] = version
+                changes.append(
+                    f"{package_name}: version normalized to {version} ({reason}, old={old_target})"
+                )
+
+        # 1) Standards caret pour package.json (si package deja present)
+        for package_name, standard_version in PACKAGE_JSON_CARET_STANDARDS.items():
+            if package_name not in packages:
+                continue
+            target_section = "dependencies" if package_name == "react" else "devDependencies"
+            force_version(
+                package_name,
+                target_section=target_section,
+                version=standard_version,
+                reason="package.json caret standard",
+            )
+
         for package_name in packages:
+            if package_name in PACKAGE_JSON_CARET_STANDARDS:
+                continue
+
             if package_name == "vite-plugin-eslint":
-                force_dev_latest(package_name, "critical vite plugin policy")
+                force_version(
+                    package_name,
+                    target_section="devDependencies",
+                    version="latest",
+                    reason="critical vite plugin policy",
+                )
                 continue
 
             if self._is_tooling_dependency(package_name):
-                force_dev_latest(package_name, "tooling package")
+                force_version(
+                    package_name,
+                    target_section="devDependencies",
+                    version="latest",
+                    reason="tooling package",
+                )
 
         if changes:
             pkg_data["dependencies"] = dependencies
@@ -2158,6 +2198,14 @@ ReactDOM.createRoot(rootElement).render(
             pkg_path.write_text(json.dumps(pkg_data, indent=2) + "\n", encoding="utf-8")
 
         return changes
+
+    def _resolve_declared_version(self, pkg_name: str) -> str:
+        """
+        Version a ecrire dans package.json:
+        - standards caret pour react/vite/plugin-react
+        - latest pour toutes les nouvelles deps non-standard
+        """
+        return PACKAGE_JSON_CARET_STANDARDS.get(pkg_name, "latest")
 
     def validate_dependency_node(self, state: AgentState) -> dict:
         """
@@ -2250,9 +2298,10 @@ ReactDOM.createRoot(rootElement).render(
                         if section not in pkg_data:
                             pkg_data[section] = {}
                         
-                        pkg_data[section][pkg] = "latest"
+                        version_to_write = self._resolve_declared_version(pkg)
+                        pkg_data[section][pkg] = version_to_write
                         fixed_issues.append(f"Added {pkg} to {section}")
-                        logger.info(f"[ADD] Ajoute {pkg} aux {section}")
+                        logger.info(f"[ADD] Ajoute {pkg}@{version_to_write} aux {section}")
                         
                         # [NEW] TYPES-FIRST APPROACH: Pour chaque package ajoute en TypeScript,
                         # ajouter automatiquement le @types/* correspondant

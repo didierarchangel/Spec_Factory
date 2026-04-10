@@ -99,7 +99,7 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
 * **Langage** : TypeScript (Configuration : ES Modules, Target: ES2022)
 * **TypeScript** : Oui. Un fichier `tsconfig.json` DOIT impérativement être présent à la racine du dossier `/frontend`.
 * **Framework** : [Ex: 
-    - **Option A: React 18 avec Vite** : React (^18.2.0) + Vite (^5.1.4) + react-router-dom (^6.22.3)
+    - **Option A: React 18 avec Vite** : React (^18.0.0) + Vite (^5.0.0) + react-router-dom (^6.22.3)
     - **Option B: Next.js** : Next.js (^14.0.0) avec `app/` directory (App Router) OU `pages/` directory (Pages Router)
     - Autre : [Framework spécifié]
 * **Routage** : 
@@ -111,21 +111,23 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
     - Si Next.js est choisi, un `next.config.ts` ou `next.config.js` DOIT être présent
     - Les deux frameworks ne peuvent PAS coexister dans le même projet
 
-### 1.3 Outillage & Tests (VERSIONS FIXES OBLIGATOIRES)
+### 1.3 Outillage & Tests (VERSIONNING NPM STRICT)
 * **Linter/Formatter** : [Ex: ESLint, Prettier]
 * **Tests** : [Ex: Jest (29.7.0), Vitest, Supertest (pour API)]
 * **Classification NPM (STRICTE)** : 
     - `dependencies` : Uniquement packages de production (express, mongoose, etc.).
     - `devDependencies` : Outils de dev (typescript, nodemon, eslint, prettier, jest, etc.).
     - TOUT paquet `@types/*` **DOIT** être dans `devDependencies`.
-* **Note** : Ne jamais inventer de version. Si une version est explicitement définie par la Constitution/projet, la conserver (sans `^` ou `~`). Si la version n'est pas confirmée pour un outil de tooling, utiliser `latest`.
+* **Note** : Appliquer la Directive de Sécurité NPM (ci-dessous) pour tout ajout/mise à jour de dépendance.
 
 ### 1.4 RÈGLE CRITIQUE - INSTALLATION NPM (ANTI-HALLUCINATION)
 Lors de l'ajout de dépendances dans `package.json` ou via CLI:
-1. Ne JAMAIS deviner/inventer une version (ex: `@3.2.1`).
-2. Utiliser systématiquement `latest` pour les outils de tooling quand la version n'est pas explicitement imposée (ex: `vite-plugin-eslint`, `eslint`, `prettier`, `tailwindcss`, `postcss`, `autoprefixer`, `typescript`, `@types/*`).
-3. `vite-plugin-eslint` doit être déclaré en `devDependencies` uniquement.
-4. Les versions avec caret (`^`) ne sont autorisées que si elles existent déjà et sont confirmées dans le contexte du projet.
+1. Interdiction formelle de générer des numéros de version fixes de mémoire (ex: `1.2.3`).
+2. OBLIGATION d'utiliser le tag `@latest` pour toute nouvelle dépendance ajoutée via CLI (ex: `npm install @vitejs/plugin-react@latest`).
+3. Si l'IA écrit directement dans `package.json`, utiliser les versions caret standards:
+   - `react`: `^18.0.0`
+   - `vite`: `^5.0.0`
+   - `@vitejs/plugin-react`: `^4.0.0`
 ---
 
 ## 2. RÈGLES D'ARCHITECTURE (LE SANCTUAIRE)

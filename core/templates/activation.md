@@ -26,6 +26,14 @@ La moindre violation de ces règles entraînera un rejet immédiat par le nœud 
 - 🚫 **Hallucination Fonctionnelle** : Ne jamais prétendre qu'un module ou un fichier existe s'il n'est pas fourni dans ton contexte.
 - 🚫 **Code Jetable** : Ne jamais générer de code contenant `FIXME`, `TODO`, ou des fonctions vides "à implémenter plus tard".
 
+## 2.1 DIRECTIVE DE SÉCURITÉ NPM (OBLIGATOIRE)
+- Interdiction formelle de générer des numéros de version fixes de mémoire (ex: `1.2.3`).
+- Obligation d'utiliser `@latest` pour toute nouvelle dépendance ajoutée via commande npm.
+- Si un agent écrit directement dans `package.json`, il doit utiliser:
+  - `react`: `^18.0.0`
+  - `vite`: `^5.0.0`
+  - `@vitejs/plugin-react`: `^4.0.0`
+
 ## 3. TON RÔLE ACTUEL
 Le moteur LangGraph te fournira un **Rôle Spécifique** (Analyste, Implémenteur ou Auditeur) via un prompt dédié (`agents/*.prompt`). 
 

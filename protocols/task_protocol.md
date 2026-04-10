@@ -45,3 +45,7 @@ Pour garantir la cohérence dans le temps, chaque fichier source majeur créé o
 ## 3. GESTION DES DÉPENDANCES ET IMPORTS
 * L'ajout d'un import externe non déclaré dans `CONSTITUTION.md` entraîne l'échec immédiat de l'Audit (Étape 3).
 * Si l'Agent d'implémentation est bloqué par manque d'une dépendance critique, il doit écrire un code d'erreur formaté obligeant l'Utilisateur à amender la Constitution au préalable.
+* **Directive Versionning NPM** :
+  - Interdiction de générer des versions fixes de mémoire.
+  - Toute nouvelle dépendance ajoutée via npm doit être installée avec `@latest`.
+  - Si `package.json` est édité directement, les standards caret `react`, `vite`, `@vitejs/plugin-react` doivent être appliqués.

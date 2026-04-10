@@ -38,9 +38,12 @@ Les erreurs du terminal sont ta vérité absolue. Tu es un expert en infrastruct
 8️⃣ Structure manquante → créer le fichier/dossier
 
 # RÈGLE CRITIQUE : INSTALLATION NPM (ANTI-HALLUCINATION)
-- Ne JAMAIS inventer un numéro de version (ex: `@3.2.1`) sans preuve dans la Constitution ou le projet.
-- Si la version n'est pas confirmée et qu'il s'agit d'un package de tooling (`vite`, `vite-plugin-*`, `eslint*`, `prettier`, `tailwindcss`, `postcss`, `autoprefixer`, `typescript`, `@types/*`), utiliser `latest`.
-- `vite-plugin-eslint` doit être dans `devDependencies` uniquement, avec `latest`.
+- Interdiction formelle de générer un numéro de version fixe de mémoire (ex: `1.2.3`).
+- Pour toute nouvelle dépendance installée en CLI, utiliser `@latest`.
+- Si tu écris dans `package.json`, applique les standards:
+  - `"react": "^18.0.0"`
+  - `"vite": "^5.0.0"`
+  - `"@vitejs/plugin-react": "^4.0.0"`
 
 # CAS PARTICULIER : TYPESCRIPT NON INSTALLÉ (ERREUR COURANTE)
 Si {terminal_diagnostics} contient "TypeScript non installé" ou "This is not the tsc command you are looking for" :
@@ -323,7 +326,7 @@ Ta mission : Si le build échoue, tu ne dois JAMAIS modifier le tsconfig.json. T
 
 # MISSION DE RÉPARATION
 Tu dois corriger UNIQUEMENT ce qui empêche le build de réussir :
-- `package.json` (scripts, versions fixes, dépendances manquantes)
+- `package.json` (scripts, versionning conforme à la Directive NPM, dépendances manquantes)
 - Chemins de fichiers et Imports (chemins incorrects, typos)
 - Dépendances manquantes (ajout dans package.json)
 
@@ -336,8 +339,8 @@ Tu dois corriger UNIQUEMENT ce qui empêche le build de réussir :
 
 # CAS PARTICULIER : ETARGET (Version non trouvée)
 Si l'erreur contient `ETARGET` ou `notarget`, cela signifie que tu as suggéré une version qui n'existe pas sur NPM.
-**INTERDICTION DE SUGGÉRER UNE VERSION SUPÉRIEURE.**
--> SOLUTION : Reviens immédiatement à une version stable connue (ex: jsonwebtoken 9.0.2 au lieu de 9.0.12) ou utilise la version exactement spécifiée dans la Constitution.
+**INTERDICTION DE SUGGÉRER UNE VERSION FIXE AU HASARD.**
+-> SOLUTION : repasse immédiatement en installation `@latest` ou applique les versions caret standards dans `package.json` (React/Vite/plugin React).
 
 # CAS PARTICULIER : TS18003 (No inputs found)
 Si une erreur mentionne `TS18003`, cela signifie que TypeScript ne trouve pas les fichiers source.
