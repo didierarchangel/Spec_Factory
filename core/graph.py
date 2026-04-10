@@ -3374,7 +3374,11 @@ ReactDOM.createRoot(rootElement).render(
                     logger.debug(f"[DOC] Pattern 3 (simple) matched: {combined_path}")
             
             # Pattern 5: Fichiers de configuration ou autres listes directement
-            list_matches = re.findall(r'([\w\.-]+\.(?:json|ts|tsx|js|jsx|yml|yaml))', line)
+            # IMPORTANT: ignorer les appels de fonction type `express.json()`
+            list_matches = re.findall(
+                r'\b([\w\.-]+\.(?:json|ts|tsx|js|jsx|yml|yaml))\b(?!\s*\()',
+                line
+            )
             for f in list_matches:
                 if f not in seen_full_paths:
                     required_files.append(f)
