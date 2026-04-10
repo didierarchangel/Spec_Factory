@@ -54,6 +54,7 @@ TOOLING_PACKAGES = {
     "tailwindcss",
     "postcss",
     "autoprefixer",
+    "cypress",
     "vitest",
     "jest",
     "ts-jest",
@@ -67,6 +68,7 @@ TOOLING_PACKAGES = {
 TOOLING_PREFIXES = (
     "@types/",
     "@vitejs/",
+    "@typescript-eslint/",
     "vite-plugin-",
     "eslint-",
     "@testing-library/",
@@ -74,9 +76,10 @@ TOOLING_PREFIXES = (
 
 # Standards quand l'IA ecrit directement package.json
 PACKAGE_JSON_CARET_STANDARDS = {
-    "react": "^18.0.0",
-    "vite": "^5.0.0",
-    "@vitejs/plugin-react": "^4.0.0",
+    "react": ("dependencies", "^18.0.0"),
+    "react-dom": ("dependencies", "^18.0.0"),
+    "vite": ("devDependencies", "^5.0.0"),
+    "@vitejs/plugin-react": ("devDependencies", "^4.0.0"),
 }
 
 # --- Extraction des keywords semantiques d'une tache ---
@@ -390,6 +393,15 @@ class SpecGraphManager:
             return "pages"
         
         return "unknown"
+
+    def _get_existing_module_dirs(self) -> List[Path]:
+        """Retourne les modules applicatifs existants (backend/frontend/mobile) avec package.json."""
+        module_dirs: List[Path] = []
+        for module_name in ["backend", "frontend", "mobile"]:
+            module_dir = self.root / module_name
+            if module_dir.exists() and (module_dir / "package.json").exists():
+                module_dirs.append(module_dir)
+        return module_dirs
 
     def _detect_cross_module_deps(self, target_module: str, pkg_path: Path) -> dict:
         """Detecte les dependances cross-module (ex: frontend depend du backend).
@@ -2175,10 +2187,9 @@ ReactDOM.createRoot(rootElement).render(
                 )
 
         # 1) Standards caret pour package.json (si package deja present)
-        for package_name, standard_version in PACKAGE_JSON_CARET_STANDARDS.items():
+        for package_name, (target_section, standard_version) in PACKAGE_JSON_CARET_STANDARDS.items():
             if package_name not in packages:
                 continue
-            target_section = "dependencies" if package_name == "react" else "devDependencies"
             force_version(
                 package_name,
                 target_section=target_section,
@@ -2220,7 +2231,10 @@ ReactDOM.createRoot(rootElement).render(
         - standards caret pour react/vite/plugin-react
         - latest pour toutes les nouvelles deps non-standard
         """
-        return PACKAGE_JSON_CARET_STANDARDS.get(pkg_name, "latest")
+        standard = PACKAGE_JSON_CARET_STANDARDS.get(pkg_name)
+        if standard:
+            return standard[1]
+        return "latest"
 
     def validate_dependency_node(self, state: AgentState) -> dict:
         """
@@ -2243,7 +2257,11 @@ ReactDOM.createRoot(rootElement).render(
             
             fixed_issues = []
             target_module = state.get("target_module")
-            search_dirs = [self.root / target_module] if target_module else [self.root, self.root / "backend", self.root / "frontend"]
+            if target_module:
+                search_dirs = [self.root / target_module]
+            else:
+                module_dirs = self._get_existing_module_dirs()
+                search_dirs = module_dirs if module_dirs else [self.root]
             
             for target_dir in search_dirs:
                 try:
@@ -2384,15 +2402,17 @@ ReactDOM.createRoot(rootElement).render(
         if target_module:
             target_dir = self.root / target_module
         else:
-            # Chercher le premier repertoire avec package.json
-            for search_dir in [self.root, self.root / "backend", self.root / "frontend"]:
-                if (search_dir / "package.json").exists():
-                    target_dir = search_dir
-                    break
+            # Priorite aux modules applicatifs (backend/frontend/mobile), puis root en fallback
+            module_dirs = self._get_existing_module_dirs()
+            if module_dirs:
+                target_dir = module_dirs[0]
             else:
-                logger.warning("[WARN] Aucun package.json trouve")
-                state["missing_modules"] = []
-                return state  # type: ignore[return-value]
+                if (self.root / "package.json").exists():
+                    target_dir = self.root
+                else:
+                    logger.warning("[WARN] Aucun package.json trouve")
+                    state["missing_modules"] = []
+                    return state  # type: ignore[return-value]
         
         pkg_path = target_dir / "package.json"
         if not pkg_path.exists():
@@ -3390,9 +3410,10 @@ ReactDOM.createRoot(rootElement).render(
             search_dirs = [self.root / target_module]
             logger.info(f"[TARGET] Diagnostics STRICT : module {target_module} seulement (autres ignores)")
         else:
-            # Fallback : tous les modules disponibles
-            search_dirs = [self.root, self.root / "backend", self.root / "frontend"]
-            logger.info(f"[TARGET] Diagnostics sur tous les modules")
+            # Fallback : modules applicatifs uniquement (root seulement si aucun module detecte)
+            module_dirs = self._get_existing_module_dirs()
+            search_dirs = module_dirs if module_dirs else [self.root]
+            logger.info(f"[TARGET] Diagnostics sur tous les modules applicatifs")
         
         reports = []
         missing_modules = []
@@ -3547,12 +3568,10 @@ ReactDOM.createRoot(rootElement).render(
                 logger.warning(f"[WARN] Target module {target_module} untrouvable. Fallback scan root.")
                 search_dirs = [self.root]
         else:
-            # Fallback scan ALL available modules if no target set
-            search_dirs = [self.root]
-            for d in ["backend", "frontend", "mobile"]:
-                if (self.root / d).exists():
-                    search_dirs.append(self.root / d)
-            logger.info(f"[TARGET] Resolver scanning all modules (no target set)")
+            # Fallback scan ALL available application modules (root only if none exists)
+            module_dirs = self._get_existing_module_dirs()
+            search_dirs = module_dirs if module_dirs else [self.root]
+            logger.info(f"[TARGET] Resolver scanning all application modules (no target set)")
         
         detected_missing = []
         
@@ -3800,7 +3819,8 @@ ReactDOM.createRoot(rootElement).render(
             has_tsc_errors_in_target = f"[TSC {target_module}] [ERROR]" in terminal_diag or f"[VITE {target_module}] [ERROR]" in terminal_diag
             logger.info(f"[TARGET] Erreurs TSC dans module cible ({target_module}): {has_tsc_errors_in_target}")
         else:
-            has_tsc_errors_in_target = "[ERROR] ECHEC" in terminal_diag
+            has_tsc_errors_in_target = re.search(r"\[(?:TSC|VITE|NEXT)\s+[^\]]+\]\s+\[ERROR\]", terminal_diag) is not None
+            logger.info(f"[TARGET] Erreurs build modules transversaux: {has_tsc_errors_in_target}")
         
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
         has_missing_modules = len(llm_missing) > 0
