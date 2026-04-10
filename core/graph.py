@@ -314,18 +314,10 @@ class SpecGraphManager:
         match = re.search(r"_(backend|frontend|mobile|api|infra|docs)", task_id, re.IGNORECASE)
         if match:
             return match.group(1).lower()
-        
-        # Fallback: strategie heuristique basee sur le numero
-        # 01-02 = backend, 03-04 = frontend, etc.
-        match = re.match(r"(\d+)", task_id)
-        if match:
-            step_num = int(match.group(1))
-            if step_num <= 2:
-                return "backend"
-            elif step_num <= 4:
-                return "frontend"
-        
-        # Default: None (tous les modules)
+
+        # IMPORTANT: Pas d'heuristique basee sur le numero d'etape.
+        # Une tache sans suffixe explicite (_backend/_frontend/...) est transversale.
+        # Exemple: 04_Configuration_Outillage_Qualite peut legitiment toucher backend + frontend.
         return None
 
     def _load_stack_preferences(self) -> Dict[str, str]:
