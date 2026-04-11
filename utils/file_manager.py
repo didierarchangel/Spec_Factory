@@ -532,10 +532,17 @@ class FileManager:
                 compiler_options["module"] = "NodeNext"
                 changed = True
 
-            # Réduit le bruit TS6 si un ancien template passe encore.
-            if "ignoreDeprecations" not in compiler_options:
-                compiler_options["ignoreDeprecations"] = "6.0"
+            # Valeur compatible TypeScript 5.x.
+            # Corrige aussi les anciens templates qui injectaient "6.0" (invalide en TS 5.x).
+            ignore_deprecations = compiler_options.get("ignoreDeprecations")
+            if ignore_deprecations is None:
+                compiler_options["ignoreDeprecations"] = "5.0"
                 changed = True
+            else:
+                ignore_str = str(ignore_deprecations).strip()
+                if ignore_str not in {"5.0", "5"}:
+                    compiler_options["ignoreDeprecations"] = "5.0"
+                    changed = True
 
             if changed:
                 logger.info(f"🧙‍♂️ tsconfig normalisé ({file_path or 'tsconfig'}): moduleResolution moderne + ignoreDeprecations.")

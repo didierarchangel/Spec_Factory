@@ -33,7 +33,7 @@ Les agents ont l'interdiction formelle d'ajouter, de suggérer ou d'installer de
     "compilerOptions": {
       "module": "NodeNext",
       "moduleResolution": "NodeNext",
-      "ignoreDeprecations": "6.0",
+      "ignoreDeprecations": "5.0",
       "target": "ES2022"
     }
   }

@@ -22,7 +22,7 @@
         "forceConsistentCasingInFileNames": true,
         "resolveJsonModule": true,
         "isolatedModules": true,
-        "ignoreDeprecations": "6.0",
+        "ignoreDeprecations": "5.0",
         "baseUrl": ".",
         "paths": {
             "*": [

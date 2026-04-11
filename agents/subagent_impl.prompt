@@ -84,7 +84,7 @@ TOUS les fichiers générés ou modifiés dans ce fichier DOIVENT incluire:
   "type": "module",
   "module": "NodeNext",
   "moduleResolution": "NodeNext",
-  "ignoreDeprecations": "6.0",
+  "ignoreDeprecations": "5.0",
   "scripts": {
     "dev": "cross-env NODE_OPTIONS='--loader ts-node/esm' nodemon --exec ts-node --esm src/app.ts",
     "build": "tsc",
