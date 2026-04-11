@@ -68,6 +68,7 @@ class EtapeManager:
         mapping_component_raw = ""
         detected_components_from_image: list[str] = []
         image_meta_payload: dict = {}
+        image_domain_modules: list[str] = []
 
         if self.image_meta_path.exists():
             image_meta_raw = self.image_meta_path.read_text(encoding="utf-8")
@@ -82,6 +83,20 @@ class EtapeManager:
                         for component in raw_components
                         if str(component).strip()
                     ]
+                domain_adaptation = payload.get("DOMAIN_ADAPTATION", {})
+                raw_image_modules = (
+                    domain_adaptation.get("modules", [])
+                    if isinstance(domain_adaptation, dict)
+                    else []
+                )
+                if isinstance(raw_image_modules, list):
+                    for raw_module in raw_image_modules:
+                        token = self._normalize_domain_module_candidate(str(raw_module))
+                        if token and token not in image_domain_modules:
+                            image_domain_modules.append(token)
+                        for inferred in self._extract_domain_modules_from_text(str(raw_module)):
+                            if inferred not in image_domain_modules:
+                                image_domain_modules.append(inferred)
             except Exception as e:
                 logger.warning(
                     "Impossible de parser design/image_meta.json pour detected_components: %s",
@@ -97,7 +112,7 @@ class EtapeManager:
         mapping_hints = self._extract_mapping_hints(mapping_component_raw)
         constitution_modules = self._extract_domain_modules_from_constitution(constitution_content)
         mapping_modules = mapping_hints.get("modules", [])
-        domain_modules = list(dict.fromkeys(constitution_modules + mapping_modules))
+        domain_modules = list(dict.fromkeys(constitution_modules + mapping_modules + image_domain_modules))
 
         mapping_components = list((mapping_hints.get("placements") or {}).keys())
         detected_components = list(dict.fromkeys(detected_components_from_image + mapping_components))
@@ -118,6 +133,7 @@ class EtapeManager:
             "domain_modules": domain_modules,
             "constitution_modules": constitution_modules,
             "mapping_modules": mapping_modules,
+            "image_modules": image_domain_modules,
             "mapping_hints": mapping_hints,
             "layout_blueprint": layout_blueprint,
             "layout_blueprint_text": layout_blueprint_text,
@@ -160,14 +176,24 @@ class EtapeManager:
         # Canonicalisation domaine HMS (et fallback generic)
         if "patient" in joined:
             return "patients"
+        if "user" in joined or "utilisateur" in joined or "auth" in joined or "account" in joined:
+            return "users"
+        if "doctor" in joined or "medecin" in joined:
+            return "doctors"
         if "consult" in joined:
             return "consultations"
         if "prescri" in joined:
             return "prescriptions"
+        if "pharma" in joined or "medic" in joined or "stock" in joined:
+            return "medications"
         if "factur" in joined or "bill" in joined:
             return "billing"
         if "alert" in joined:
             return "alerts"
+        if "chat" in joined or "message" in joined or "communic" in joined:
+            return "chat"
+        if "archiv" in joined or "record" in joined or "dossier" in joined:
+            return "archives"
         if "rendez" in joined or "appointment" in joined:
             return "appointments"
 
@@ -200,6 +226,32 @@ class EtapeManager:
         if any(char.isdigit() for char in token):
             return None
         return token
+
+    def _extract_domain_modules_from_text(self, text: str) -> list[str]:
+        """Extrait des modules metier depuis un texte libre (Vision Application, parcours critique, etc.)."""
+        if not text:
+            return []
+        low = self._strip_accents(text.lower())
+        modules: list[str] = []
+
+        rules = [
+            (("inscription", "connexion", "login", "register", "authentification", "utilisateur", "user", "account", "jwt"), "users"),
+            (("medecin", "doctor"), "doctors"),
+            (("patient",), "patients"),
+            (("consultation", "consult", "appointment", "rendez"), "consultations"),
+            (("prescription", "prescri", "ordonnance"), "prescriptions"),
+            (("pharmacie", "pharmacy", "medicament", "medication", "stock"), "medications"),
+            (("facturation", "billing", "invoice", "paiement", "payment", "caisse"), "billing"),
+            (("alerte", "alert", "notification"), "alerts"),
+            (("chat", "message", "communication"), "chat"),
+            (("archive", "archiv", "dossier", "record"), "archives"),
+        ]
+
+        for keywords, module in rules:
+            if any(keyword in low for keyword in keywords) and module not in modules:
+                modules.append(module)
+
+        return modules
 
     def _extract_domain_modules_from_constitution(self, constitution_content: str) -> list[str]:
         """Extrait une liste de modules metier depuis la CONSTITUTION."""
@@ -246,6 +298,11 @@ class EtapeManager:
                     continue
                 seen.add(token)
                 modules.append(token)
+
+        for inferred in self._extract_domain_modules_from_text(constitution_content):
+            if inferred not in seen:
+                seen.add(inferred)
+                modules.append(inferred)
 
         return modules[:12]
 
@@ -321,6 +378,12 @@ class EtapeManager:
                     if token and token not in modules:
                         modules.append(token)
 
+            if "parcours critique" in self._strip_accents(line.lower()):
+                right = line.split(":", 1)[1] if ":" in line else line
+                for inferred in self._extract_domain_modules_from_text(right):
+                    if inferred not in modules:
+                        modules.append(inferred)
+
             mapping_candidate = False
             if in_mapping and line.startswith(("-", "*")):
                 mapping_candidate = True
@@ -338,6 +401,10 @@ class EtapeManager:
                     zone = m_place.group(2).strip()
                     if component and zone:
                         placements[component] = zone
+
+        for inferred in self._extract_domain_modules_from_text(mapping_content):
+            if inferred not in modules:
+                modules.append(inferred)
 
         hints["sections"] = list(dict.fromkeys(sections))
         hints["modules"] = modules[:16]
@@ -679,20 +746,140 @@ class EtapeManager:
         """Fallback entites si aucune entite n'est explicite dans l'etape modelisation."""
         entities: list[dict] = []
         seen_slugs: set[str] = set()
+
+        def add_entity(name: str, slug: str | None = None):
+            s = (slug or self._component_filename(name)).lower()
+            if not s or s in seen_slugs:
+                return
+            seen_slugs.add(s)
+            entities.append({
+                "name": name,
+                "slug": s,
+                "resource": self._pluralize_resource(s),
+            })
+
         for module_name in domain_modules:
+            module_low = self._strip_accents(module_name.lower())
+            canonical_added = False
+
+            if any(k in module_low for k in ("user", "utilisateur", "auth", "account", "role", "login", "register")):
+                add_entity("User", "user")
+                canonical_added = True
+            if any(k in module_low for k in ("doctor", "medecin")):
+                add_entity("Doctor", "doctor")
+                canonical_added = True
+            if "patient" in module_low:
+                add_entity("Patient", "patient")
+                canonical_added = True
+            if "consult" in module_low or "appointment" in module_low or "rendez" in module_low:
+                add_entity("Consultation", "consultation")
+                canonical_added = True
+            if "prescri" in module_low or "ordonnance" in module_low:
+                add_entity("Prescription", "prescription")
+                canonical_added = True
+            if any(k in module_low for k in ("pharma", "medic", "stock")):
+                add_entity("Medication", "medication")
+                canonical_added = True
+            if any(k in module_low for k in ("bill", "factur", "paiement", "payment", "caisse", "invoice")):
+                add_entity("Billing", "billing")
+                canonical_added = True
+            if any(k in module_low for k in ("alert", "notification")):
+                add_entity("Alert", "alert")
+                canonical_added = True
+            if any(k in module_low for k in ("chat", "message", "communic")):
+                add_entity("ChatMessage", "chat_message")
+                canonical_added = True
+            if any(k in module_low for k in ("archiv", "record", "dossier")):
+                add_entity("Archive", "archive")
+                canonical_added = True
+
+            if canonical_added:
+                continue
+
             module_slug = self._component_filename(module_name).lower()
             if not module_slug:
                 continue
             singular_slug = module_slug[:-1] if module_slug.endswith("s") and len(module_slug) > 3 else module_slug
-            if singular_slug in seen_slugs:
-                continue
-            seen_slugs.add(singular_slug)
-            entities.append({
-                "name": singular_slug.capitalize(),
-                "slug": singular_slug,
-                "resource": self._pluralize_resource(singular_slug),
-            })
+            add_entity(singular_slug.capitalize(), singular_slug)
+
         return entities
+
+    def _merge_model_entities(self, primary: list[dict], secondary: list[dict]) -> list[dict]:
+        """Fusionne deux listes d'entites en preservant l'ordre et en dedupliquant par slug."""
+        merged: list[dict] = []
+        seen: set[str] = set()
+
+        for source in (primary, secondary):
+            for entity in source:
+                slug = str(entity.get("slug", "")).strip().lower()
+                if not slug or slug in seen:
+                    continue
+                seen.add(slug)
+                merged.append({
+                    "name": str(entity.get("name", slug.capitalize())),
+                    "slug": slug,
+                    "resource": str(entity.get("resource", self._pluralize_resource(slug))),
+                })
+        return merged
+
+    def _enforce_modelisation_step_coverage(
+        self,
+        markdown_steps: str,
+        domain_modules: list[str],
+    ) -> str:
+        """Garantit que *_Modelisation_Donnees_MongoDB couvre toutes les entites attendues."""
+        if not markdown_steps:
+            return markdown_steps
+
+        lines = markdown_steps.splitlines()
+        step_ranges = self._find_step_ranges_by_suffix(lines, ["Modelisation_Donnees_MongoDB"])
+        if not step_ranges:
+            return markdown_steps
+
+        inferred_entities = self._build_model_entities_fallback(domain_modules)
+
+        for start_index, end_index, _step_id in sorted(step_ranges, key=lambda item: item[0], reverse=True):
+            existing_subtasks = [
+                lines[k].strip()
+                for k in range(start_index + 1, end_index)
+                if lines[k].strip().startswith("- [")
+            ]
+            existing_text_raw_norm = self._strip_accents("\n".join(existing_subtasks).lower())
+            existing_text_norm = self._normalize_component_name(" ".join(existing_subtasks))
+
+            existing_entities = self._extract_model_entities_from_steps(
+                lines[start_index:end_index]
+            )
+            required_entities = self._merge_model_entities(existing_entities, inferred_entities)
+            additions = []
+
+            source_sig = self._normalize_component_name("modelisation donnees mongodb constitution mappingcomponent vision application")
+            if source_sig not in existing_text_norm:
+                additions.append(
+                    "- [ ] Deriver les modeles depuis `Constitution/CONSTITUTION.md` (regles/stack), `Constitution/MappingComponent.md` (Vision Application et parcours critique), `design/image_meta.json` (`DOMAIN_ADAPTATION.modules`) et `design/constitution_design.yaml`"
+                )
+
+            if "parcours critique" not in existing_text_raw_norm:
+                additions.append(
+                    "- [ ] Verifier la couverture complete des modeles par rapport au parcours critique de la Vision Application (inscription/connexion -> patients -> consultation -> prescriptions -> pharmacie -> facturation -> dashboard)"
+                )
+
+            for entity in required_entities:
+                name = str(entity.get("name", "")).strip()
+                slug = str(entity.get("slug", "")).strip()
+                if not name or not slug:
+                    continue
+                model_sig = self._normalize_component_name(f"{name}.model.ts backend/src/models/{name}.model.ts")
+                if model_sig in existing_text_norm:
+                    continue
+                additions.append(
+                    f"- [ ] Generer `backend/src/models/{name}.model.ts` pour le module metier `{slug}` (source: Vision Application + parcours critique)"
+                )
+
+            if additions:
+                lines = lines[:end_index] + additions + lines[end_index:]
+
+        return "\n".join(lines)
 
     def _pick_auth_entity(self, entities: list[dict]) -> dict | None:
         """Choisit l'entite auth prioritaire (User/Account/Utilisateur...)."""
@@ -759,9 +946,10 @@ class EtapeManager:
             return markdown_steps
 
         lines = markdown_steps.splitlines()
-        model_entities = self._extract_model_entities_from_steps(lines)
-        if not model_entities:
-            model_entities = self._build_model_entities_fallback(domain_modules)
+        model_entities = self._merge_model_entities(
+            self._extract_model_entities_from_steps(lines),
+            self._build_model_entities_fallback(domain_modules),
+        )
 
         auth_entity = self._pick_auth_entity(model_entities)
         api_entities = self._select_api_entities(model_entities)
@@ -908,9 +1096,10 @@ class EtapeManager:
             return markdown_steps
 
         lines = markdown_steps.splitlines()
-        model_entities = self._extract_model_entities_from_steps(lines)
-        if not model_entities:
-            model_entities = self._build_model_entities_fallback(domain_modules)
+        model_entities = self._merge_model_entities(
+            self._extract_model_entities_from_steps(lines),
+            self._build_model_entities_fallback(domain_modules),
+        )
 
         auth_entity = self._pick_auth_entity(model_entities)
         api_entities = self._select_api_entities(model_entities)
@@ -1071,6 +1260,7 @@ class EtapeManager:
             11. Les étapes backend `*_Backend_API_Modules` / `*_API_Modules` doivent explicitement relier routes/controllers aux composants/pages de l'étape `*_Frontend_Components`.
             12. Les etapes backend `*_Backend_Auth_JWT`, `*_Backend_API_Modules` / `*_API_Modules` et `*_Tests_Backend_API` doivent etre configurees dynamiquement a partir des entites/modeles declares dans l'etape `*_Modelisation_Donnees_MongoDB` (pas de hardcode fixe type `patients`).
             13. Les etapes frontend `*_Architecture_Frontend`, `*_API_LAYER` et `*_Frontend_Components` doivent etre correlees aux etapes backend (`*_Modelisation_Donnees_MongoDB` + `*_Backend_API_Modules`) pour eviter tout decouplage UI/API.
+            14. L'etape `*_Modelisation_Donnees_MongoDB` doit couvrir l'integralite de la Vision Application de `Constitution/MappingComponent.md` (en particulier le parcours critique), puis propager cette couverture aux routes, middlewares et composants frontend.
             
             OBLIGATION DE STRUCTURE :
             Afin de standardiser la qualité des pipelines, tu DOIS inclure (ou adapter) la structure d'étapes suivante pour garantir une architecture de type Web moderne (API + Frontend) complète :
@@ -1109,6 +1299,7 @@ class EtapeManager:
             - IMPORTANT : L'étape `## [ ] *_Backend_API_Modules` (ou `*_API_Modules`) doit inclure des sous-tâches de mapping backend->frontend (routes/controllers alignés avec les composants/pages de `*_Frontend_Components`).
             - IMPORTANT : Les sous-taches de `*_Backend_Auth_JWT`, `*_Backend_API_Modules` et `*_Tests_Backend_API` doivent referencer explicitement l'etape `*_Modelisation_Donnees_MongoDB` comme source de verite des entites backend.
             - IMPORTANT : Les sous-taches de `*_Architecture_Frontend`, `*_API_LAYER` et `*_Frontend_Components` doivent referencer explicitement `*_Backend_API_Modules` et `*_Modelisation_Donnees_MongoDB` comme sources de verite backend.
+            - IMPORTANT : Pour modeles/routes/middlewares/frontend_components, utiliser l'ordre de verite suivant : `Constitution/CONSTITUTION.md` -> `Constitution/MappingComponent.md` (Vision Application) -> `design/constitution_design.yaml` -> `design/image_meta.json`.
 
             Format de sortie STRICT :
             ## [x] 01_nom_etape : Titre (Préservé car déjà fait)
@@ -1144,6 +1335,7 @@ class EtapeManager:
         steps = StrOutputParser().parse(raw_output.content)
         steps = self._enforce_frontend_components_step(steps, detected_components, layout_blueprint)
         steps = self._enforce_backend_components_relation(steps, domain_modules)
+        steps = self._enforce_modelisation_step_coverage(steps, domain_modules)
         steps = self._enforce_backend_steps_from_modelisation(steps, domain_modules)
         steps = self._enforce_frontend_steps_from_backend_correlation(steps, domain_modules)
 
@@ -1195,6 +1387,8 @@ class EtapeManager:
             - Si une étape `*_Backend_API_Modules` / `*_API_Modules` est créée ou complétée, inclure explicitement le lien routes/controllers <-> composants/pages frontend.
             - Si des etapes `*_Backend_Auth_JWT`, `*_Backend_API_Modules` / `*_API_Modules`, `*_Tests_Backend_API` sont creees/completees, les sous-taches doivent etre derivees des entites/modeles de `*_Modelisation_Donnees_MongoDB` (eviter le hardcode fixe type `patients`).
             - Si des etapes `*_Architecture_Frontend`, `*_API_LAYER`, `*_Frontend_Components` sont creees/completees, les sous-taches doivent etre derivees de `*_Modelisation_Donnees_MongoDB` et `*_Backend_API_Modules` (correlation frontend-backend obligatoire).
+            - Si une etape `*_Modelisation_Donnees_MongoDB` est creee/completee, elle doit couvrir toute la Vision Application de `Constitution/MappingComponent.md` (notamment le parcours critique) avant de marquer les taches backend/frontend comme accomplies.
+            - Pour modeles/routes/middlewares/frontend_components, respecter l'ordre de verite: `Constitution/CONSTITUTION.md` -> `Constitution/MappingComponent.md` -> `design/constitution_design.yaml` -> `design/image_meta.json`.
             - RÉPONDRE UNIQUEMENT AVEC LE BLOC DES NOUVELLES ÉTAPES (format Markdown ## [ ] id : titre)."""
 
         user_message = (
@@ -1222,6 +1416,7 @@ class EtapeManager:
         new_steps = StrOutputParser().parse(raw_output.content)
         new_steps = self._enforce_frontend_components_step(new_steps, detected_components, layout_blueprint)
         new_steps = self._enforce_backend_components_relation(new_steps, domain_modules)
+        new_steps = self._enforce_modelisation_step_coverage(new_steps, domain_modules)
         new_steps = self._enforce_backend_steps_from_modelisation(new_steps, domain_modules)
         new_steps = self._enforce_frontend_steps_from_backend_correlation(new_steps, domain_modules)
 
