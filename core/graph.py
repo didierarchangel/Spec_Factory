@@ -660,13 +660,23 @@ class SpecGraphManager:
 
     def _should_run_graphic_design(self, task_name: str, checklist: str = "", user_instruction: str = "") -> bool:
         """Autorise GraphicDesign uniquement pour les vraies taches UI."""
+        text = f"{task_name}\n{checklist}\n{user_instruction}".lower()
+
+        # Hard-stop: les taches dependances/config/outillage ne doivent jamais passer par GraphicDesign.
+        non_ui_markers = [
+            "dependance", "dependency", "install", "installation", "npm", "pnpm", "yarn",
+            "package.json", "devdependencies", "dependencies", "eslint", "prettier",
+            "tsconfig", "outillage", "qualite", "lint", "build", "test",
+        ]
+        if any(marker in text for marker in non_ui_markers):
+            return False
+
         if self._is_structure_only_task(task_name, checklist, user_instruction):
             return False
 
         if not self._is_frontend_task(task_name, checklist):
             return False
 
-        text = f"{task_name}\n{checklist}\n{user_instruction}".lower()
         ui_markers = [
             "ui", "interface", "design", "style", "tailwind", "component",
             "composant", "page", "layout", "screen", "hero", "card", "dashboard",
@@ -675,19 +685,57 @@ class SpecGraphManager:
         return any(marker in text for marker in ui_markers)
 
     def _is_vibe_design_task(self, task_name: str, checklist: str = "", user_instruction: str = "") -> bool:
-        """Detecte l'etape d'extraction design (00_Vibe_Design_Extraction)."""
+        """Detecte l'etape d'extraction design (00_Vibe_Design_Extraction).
+
+        IMPORTANT:
+        Cette detection ne doit jamais capter des taches de generation code
+        (ex: modelisation MongoDB) qui referencent aussi MappingComponent/design
+        comme sources de verite.
+        """
         haystack = f"{task_name}\n{checklist}\n{user_instruction}".lower()
-        markers = [
+
+        # Hard-stop: des signaux backend/code indiquent une vraie tache d'implementation.
+        code_generation_markers = [
+            "modelisation_donnees_mongodb",
+            "modelisation donnees mongodb",
+            "backend/src/models/",
+            ".model.ts",
+            "mongoose",
+            "generer `backend/src/",
+            "creer des modeles mongoose",
+        ]
+        if any(marker in haystack for marker in code_generation_markers):
+            return False
+
+        # Cas nominal: etape vibe explicite.
+        explicit_vibe_markers = [
+            "00_vibe_design_extraction",
             "vibe_design_extraction",
             "vibe design extraction",
+            "speckit vibe-design",
+            "vibe-design",
+        ]
+        if any(marker in haystack for marker in explicit_vibe_markers):
+            return True
+
+        # Fallback: on accepte l'extraction design uniquement avec double preuve
+        # (intention d'extraction + references design), sans signaux code.
+        extraction_markers = [
             "design extraction",
             "design/tokens.yaml",
+            "extraire les tokens",
+            "extract design tokens",
+            "vibe design maker",
+        ]
+        design_source_markers = [
             "design/image_meta.json",
             "design/constitution_design.yaml",
             "constitution/mappingcomponent.md",
             "mappingcomponent.md",
         ]
-        return any(marker in haystack for marker in markers)
+        has_extraction_intent = any(marker in haystack for marker in extraction_markers)
+        has_design_sources = any(marker in haystack for marker in design_source_markers)
+        return has_extraction_intent and has_design_sources
 
     def project_enhancer_node(self, state: AgentState) -> dict:
         """Enrichit la vision du projet et la stack."""

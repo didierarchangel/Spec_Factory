@@ -1224,6 +1224,23 @@ def vibe_design(arg_prompt, provider, model, prompt, file):
         
         click.echo(" -> [AI] Generation du Design System...")
         state.update(graph_manager.design_system_node(cast(AgentState, state)))
+
+        # Synchroniser la preference design du lockfile pour que les prochaines taches
+        # utilisent bien le resultat vibe-design (system custom).
+        vibe_style = str(state.get("pattern_vision", {}).get("style", "")).strip().lower()
+        custom_pattern_path = Path("design/dataset/custom_pattern.json")
+        if vibe_style == "custom" or custom_pattern_path.exists():
+            lock_file_path = Path(".spec-lock.json")
+            if lock_file_path.exists():
+                try:
+                    lock_data = json.loads(lock_file_path.read_text(encoding="utf-8"))
+                    if "stack_preferences" not in lock_data:
+                        lock_data["stack_preferences"] = {}
+                    lock_data["stack_preferences"]["design"] = "custom"
+                    lock_file_path.write_text(json.dumps(lock_data, indent=4), encoding="utf-8")
+                    click.echo(" -> [LOCK] stack_preferences.design force a `custom` (vibe-design prioritaire).")
+                except Exception as e:
+                    click.echo(f" -> [WARN] Impossible de mettre a jour .spec-lock.json : {e}")
         
         # PERSISTENCE : Sauvegarder les tokens dans design/tokens.yaml
         tokens_path = Path("design/tokens.yaml")

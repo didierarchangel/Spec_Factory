@@ -58,24 +58,39 @@ class GraphicDesign:
     def select_pattern(self, category, preferred_system=None):
         """Selects the best pattern based on category and optional preference."""
         patterns = self.engine.search(category=category)
-        
+
         if not patterns:
             # Fallback to any pattern if category not found
-            patterns = self.engine.patterns[:5]
-            
+            patterns = self.engine.patterns[:]
+
         if preferred_system:
             preferred_system = preferred_system.lower()
-            # Filter using the SYSTEM field (or system-less patterns as neutral fallback)
-            filtered = [
+            # 1) Priorite: patterns de la categorie dans le systeme prefere
+            filtered_category = [
                 p for p in patterns
                 if p.get("system", "").lower() == preferred_system or not p.get("system")
             ]
-            if filtered:
-                patterns = filtered
+            if filtered_category:
+                patterns = filtered_category
                 logger.info(f"   ✅ Using patterns from preferred system: {preferred_system}")
             else:
-                logger.warning(f"⚠️ No patterns found for system: {preferred_system} in category: {category}. Falling back to available patterns.")
-                patterns = self.engine.patterns[:5]
+                # 2) Fallback utile: prendre n'importe quel pattern du systeme prefere
+                filtered_global = [
+                    p for p in self.engine.patterns
+                    if p.get("system", "").lower() == preferred_system
+                ]
+                if filtered_global:
+                    patterns = filtered_global
+                    logger.info(
+                        f"   ✅ No '{preferred_system}' pattern in category '{category}', using preferred system fallback."
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ No patterns found for system: {preferred_system}. Falling back to available patterns."
+                    )
+                    patterns = self.engine.patterns[:5]
+        elif not patterns:
+            patterns = self.engine.patterns[:5]
 
         # Rank and return the best one
         best = self.ranker.rank(patterns, 9) # Arbitrary 9 for constitution alignment for now
