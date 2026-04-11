@@ -2255,6 +2255,53 @@ ReactDOM.createRoot(rootElement).render(
         }
         return types_mapping.get(pkg_name)
 
+    def _ensure_types_first_for_declared_dependencies(self, pkg_data: dict, target_dir: Path) -> list[str]:
+        """
+        Assure que les @types/* existent pour les deps runtime deja declarees
+        (pas uniquement celles detectees comme "missing").
+        """
+        changes: list[str] = []
+
+        dependencies = pkg_data.get("dependencies") or {}
+        dev_dependencies = pkg_data.get("devDependencies") or {}
+
+        if not isinstance(dependencies, dict):
+            dependencies = {}
+        if not isinstance(dev_dependencies, dict):
+            dev_dependencies = {}
+
+        # Heuristique backend Node: garantir @types/node pour les projets TS backend.
+        backend_runtime_markers = {
+            "express", "cors", "mongoose", "dotenv", "morgan", "jsonwebtoken", "bcryptjs"
+        }
+        is_backend_dir = target_dir.name.lower() in {"backend", "api", "server"}
+        is_backend_runtime = is_backend_dir or any(pkg in dependencies for pkg in backend_runtime_markers)
+        if is_backend_runtime and "@types/node" not in dev_dependencies:
+            dev_dependencies["@types/node"] = "latest"
+            changes.append("Added @types/node to devDependencies (Types-First baseline)")
+            logger.info("[TYPES-FIRST] Auto-ajoute @types/node (baseline backend TypeScript)")
+
+        # Pour chaque dep runtime declaree, injecter son @types correspondant si pertinent.
+        for runtime_pkg in list(dependencies.keys()):
+            types_pkg = self._get_types_for_package(runtime_pkg)
+            if not types_pkg:
+                continue
+
+            # Un package @types/* doit toujours vivre en devDependencies.
+            if types_pkg in dependencies:
+                del dependencies[types_pkg]
+                changes.append(f"Moved {types_pkg} from dependencies to devDependencies")
+                logger.info(f"[MOVE] Deplace {types_pkg}: dependencies -> devDependencies")
+
+            if types_pkg not in dev_dependencies:
+                dev_dependencies[types_pkg] = "latest"
+                changes.append(f"Added {types_pkg} to devDependencies (Types-First)")
+                logger.info(f"[TYPES-FIRST] Auto-ajoute {types_pkg} pour {runtime_pkg} (dep deja declaree)")
+
+        pkg_data["dependencies"] = dependencies
+        pkg_data["devDependencies"] = dev_dependencies
+        return changes
+
     def _is_tooling_dependency(self, pkg_name: str) -> bool:
         """Retourne True si le package est un outil de build/lint/test (dev-only)."""
         if pkg_name in TOOLING_PACKAGES:
@@ -2360,6 +2407,81 @@ ReactDOM.createRoot(rootElement).render(
             return standard[1]
         return "latest"
 
+    def _find_uninstalled_declared_packages(self, target_dir: Path, pkg_path: Path) -> list[str]:
+        """Retourne les deps declarees dans package.json mais absentes de node_modules."""
+        if not pkg_path.exists():
+            return []
+
+        try:
+            pkg_data = json.loads(pkg_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"[WARN] Impossible de lire {pkg_path} pour verifier node_modules: {e}")
+            return []
+
+        dependencies = pkg_data.get("dependencies") or {}
+        dev_dependencies = pkg_data.get("devDependencies") or {}
+        if not isinstance(dependencies, dict):
+            dependencies = {}
+        if not isinstance(dev_dependencies, dict):
+            dev_dependencies = {}
+
+        declared_versions: dict[str, str] = {}
+        declared_versions.update(dependencies)
+        declared_versions.update(dev_dependencies)
+        if not declared_versions:
+            return []
+
+        # Specifiers qui ne correspondent pas a une resolution npm registry standard.
+        local_spec_prefixes = ("file:", "link:", "workspace:", "git+", "http:", "https:")
+        uninstalled: list[str] = []
+
+        for pkg_name, version_spec in declared_versions.items():
+            if isinstance(version_spec, str) and version_spec.startswith(local_spec_prefixes):
+                continue
+
+            if pkg_name.startswith("@"):
+                parts = pkg_name.split("/")
+                if len(parts) < 2:
+                    continue
+                installed_path = target_dir / "node_modules" / parts[0] / parts[1]
+            else:
+                installed_path = target_dir / "node_modules" / pkg_name
+
+            if not installed_path.exists():
+                uninstalled.append(pkg_name)
+
+        return uninstalled
+
+    def _extract_target_error_signature(self, terminal_diag: str, target_module: Optional[str]) -> str:
+        """Extrait une signature stable d'erreur build pour detecter les corrections sans progres."""
+        if not terminal_diag:
+            return ""
+
+        if target_module:
+            pattern = (
+                rf"\[(?:TSC|VITE|NEXT)\s+{re.escape(target_module)}\]\s+\[ERROR\][\s\S]*?"
+                rf"(?=\n\[(?:TSC|VITE|NEXT)\s+|\Z)"
+            )
+        else:
+            pattern = r"\[(?:TSC|VITE|NEXT)\s+[^\]]+\]\s+\[ERROR\][\s\S]*?(?=\n\[(?:TSC|VITE|NEXT)\s+|\Z)"
+
+        match = re.search(pattern, terminal_diag)
+        error_block = match.group(0) if match else terminal_diag
+
+        # Normalisation legere pour ignorer les variations de lignes/colonnes.
+        normalized_lines: list[str] = []
+        for raw_line in error_block.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            line = re.sub(r":\d+:\d+", ":#:#", line)
+            line = re.sub(r"\s+", " ", line)
+            normalized_lines.append(line)
+            if len(normalized_lines) >= 12:
+                break
+
+        return " | ".join(normalized_lines)
+
     def validate_dependency_node(self, state: AgentState) -> dict:
         """
         Valide et repare les dependances AVANT npm install.
@@ -2437,14 +2559,18 @@ ReactDOM.createRoot(rootElement).render(
                     if cleaned_builtins:
                         logger.info(f"[CLEAN] Nettoye {len(cleaned_builtins)} Node built-ins de package.json : {', '.join(cleaned_builtins)}")
                         fixed_issues.extend([f"Removed builtin {k}" for k in cleaned_builtins])
+
+                    is_typescript = self._is_typescript_project(target_dir)
+                    types_first_changes: list[str] = []
+                    if is_typescript:
+                        types_first_changes = self._ensure_types_first_for_declared_dependencies(pkg_data, target_dir)
+                        fixed_issues.extend(types_first_changes)
                     
-                    if not missing_dependencies and not cleaned_builtins:
+                    if not missing_dependencies and not cleaned_builtins and not types_first_changes:
                         logger.info(f"[OK] {target_dir.name}: Toutes les dependances sont declarees et propres.")
                         continue
                     
                     # [ADD] 2. Ajouter les NOUVELLES dependances manquantes (filtrees)
-                    is_typescript = self._is_typescript_project(target_dir)
-                    
                     for pkg in missing_dependencies:
                         if pkg in NODE_BUILTINS or pkg.startswith("node:"):
                             continue
@@ -2572,23 +2698,31 @@ ReactDOM.createRoot(rootElement).render(
         # C'est la seule verite fiable. Le LLM peut halluciner, pas le code source.
         scanner = SemanticScanner(str(target_dir))
         missing_from_scanner = scanner.detect_missing_dependencies()
+        missing_declared = self._find_uninstalled_declared_packages(target_dir, pkg_path)
+
+        # Source de verite finale:
+        # - scanner (imports reels)
+        # - package.json declare des deps non encore installees (ex: @types/* ajoutees automatiquement)
+        missing_candidates = list(dict.fromkeys(missing_from_scanner + missing_declared))
         
         logger.info(f"[SCAN] Scanner detecte {len(missing_from_scanner)} modules vraiment manquants: {missing_from_scanner}")
+        if missing_declared:
+            logger.info(f"[SCAN] package.json declare {len(missing_declared)} modules non installes: {missing_declared}")
         
         # [SAFE] FILTRE DEPRECATED_PACKAGES: Remplacer les packages halluciner/deprecies
-        if missing_from_scanner:
+        if missing_candidates:
             replaced = []
-            for m in missing_from_scanner:
+            for m in missing_candidates:
                 if m in DEPRECATED_PACKAGES:
                     replacement = DEPRECATED_PACKAGES[m]
                     logger.info(f"[AI] Package deprecie {m} -> remplace par {replacement}")
                     replaced.append(replacement)
                 else:
                     replaced.append(m)
-            missing_from_scanner = list(set(replaced))  # Deduplicate si plusieurs pointent au meme replacement
+            missing_candidates = list(set(replaced))  # Deduplicate si plusieurs pointent au meme replacement
         
         # [SAFE] STOCKER LE RESULTAT DU SCANNER COMME SOURCE DE VERITE
-        state["scanner_missing_modules"] = missing_from_scanner
+        state["scanner_missing_modules"] = missing_candidates
         
         import shutil
         npm_path = shutil.which("npm") or shutil.which("npm.cmd")
@@ -2605,23 +2739,23 @@ ReactDOM.createRoot(rootElement).render(
         
         # === R?GLE ARCHITECTURALE ===
         # Si le scanner dit 0 -> c'est 0, sauf si node_modules manque
-        if not missing_from_scanner and not needs_base_install:
+        if not missing_candidates and not needs_base_install:
             logger.info("[OK] Scanner confirme : aucune dependance manquante et node_modules present.")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
         
         # --- [SAFE] ANTI-BOUCLE NIVEAU 2: Filtrer les modules deja tentes ---
         attempted = state.get("attempted_installs", [])
-        filtered_missing = [m for m in missing_from_scanner if m not in attempted]
+        filtered_missing = [m for m in missing_candidates if m not in attempted]
         
         if not filtered_missing and not needs_base_install:
-            logger.info(f"[WARN] Tous les modules ont deja ete tentes: {missing_from_scanner}")
+            logger.info(f"[WARN] Tous les modules ont deja ete tentes: {missing_candidates}")
             logger.warning("[STOP] Arret des tentatives d'installation pour eviter la boucle infinie.")
             state["missing_modules"] = []
             return state  # type: ignore[return-value]
         
-        if len(filtered_missing) < len(missing_from_scanner):
-            skipped = set(missing_from_scanner) - set(filtered_missing)
+        if len(filtered_missing) < len(missing_candidates):
+            skipped = set(missing_candidates) - set(filtered_missing)
             logger.info(f"[SKIP]  Modules deja tentes (ignores): {list(skipped)}")
         
         # --- Verification prealable avec npm view ---
@@ -3976,6 +4110,22 @@ ReactDOM.createRoot(rootElement).render(
         else:
             has_tsc_errors_in_target = re.search(r"\[(?:TSC|VITE|NEXT)\s+[^\]]+\]\s+\[ERROR\]", terminal_diag) is not None
             logger.info(f"[TARGET] Erreurs build modules transversaux: {has_tsc_errors_in_target}")
+
+        # [SAFE] Circuit-breaker buildfix:
+        # si la meme signature d'erreur revient apres une correction, on evite la boucle.
+        if has_tsc_errors_in_target:
+            current_sig = self._extract_target_error_signature(terminal_diag, target_module)
+            previous_sig = state.get("last_tsc_error_signature", "")
+            if current_sig and current_sig == previous_sig:
+                repeats = state.get("tsc_error_repeat_count", 0) + 1
+                state["tsc_error_repeat_count"] = repeats
+                logger.error(f"[STOP] Meme erreur TypeScript detectee apres correction (repeat={repeats + 1}).")
+                return "verify_node"
+            state["last_tsc_error_signature"] = current_sig
+            state["tsc_error_repeat_count"] = 0
+        else:
+            state["last_tsc_error_signature"] = ""
+            state["tsc_error_repeat_count"] = 0
         
         has_structure_errors = state.get("validation_status") == "STRUCTURE_KO"
         has_missing_modules = len(llm_missing) > 0
