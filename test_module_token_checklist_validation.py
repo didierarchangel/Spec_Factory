@@ -49,7 +49,28 @@ def test_zustand_module_list_tokens_are_ignored() -> None:
         assert checked == 1
 
 
+def test_auth_action_tokens_are_ignored_for_api_layer() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "Constitution").mkdir(parents=True, exist_ok=True)
+        (root / "frontend" / "src" / "api").mkdir(parents=True, exist_ok=True)
+        (root / "frontend" / "src" / "api" / "auth.api.ts").write_text("// auth", encoding="utf-8")
+
+        etapes = """## [ ] 15_API_LAYER : API layer
+- [ ] Creer `frontend/src/api/auth.api.ts` pour `login`/`register` avec Axios + JWT
+"""
+        (root / "Constitution" / "etapes.md").write_text(etapes, encoding="utf-8")
+
+        manager = EtapeManager(model=None, project_root=str(root))
+        ok, checked, total = manager.mark_step_as_completed("15_API_LAYER")
+
+        assert ok is True
+        assert total == 1
+        assert checked == 1
+
+
 if __name__ == "__main__":
     test_module_tokens_are_ignored_in_mapping_subtasks()
     test_zustand_module_list_tokens_are_ignored()
+    test_auth_action_tokens_are_ignored_for_api_layer()
     print("ok")

@@ -1624,6 +1624,15 @@ class EtapeManager:
         if compact in {"chatmessage", "chatmessages", "billing", "billings"}:
             return True
 
+        # Actions auth/API (non-fichiers) fréquemment backtickées dans les checklists.
+        auth_action_tokens = {
+            "login", "register", "logout", "refresh", "me", "profile", "signin", "signup"
+        }
+        if lowered in auth_action_tokens:
+            subtask_low = self._strip_accents(subtask_text.lower())
+            if any(hint in subtask_low for hint in ("auth.api", "auth", "jwt", "endpoint", "api layer")):
+                return True
+
         # Tokens module typiques des plans MongoDB/Domain Modeling.
         semantic_aliases = {
             "doctor", "doctors", "patient", "patients", "user", "users",
