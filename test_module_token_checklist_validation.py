@@ -69,8 +69,32 @@ def test_auth_action_tokens_are_ignored_for_api_layer() -> None:
         assert checked == 1
 
 
+def test_dashboard_layout_tokens_are_ignored_for_frontend_components() -> None:
+    with TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "Constitution").mkdir(parents=True, exist_ok=True)
+        (root / "frontend" / "src" / "layouts").mkdir(parents=True, exist_ok=True)
+        (root / "frontend" / "src" / "pages").mkdir(parents=True, exist_ok=True)
+        (root / "frontend" / "src" / "layouts" / "AppLayout.tsx").write_text("// layout", encoding="utf-8")
+        (root / "frontend" / "src" / "pages" / "Dashboard.tsx").write_text("// dashboard", encoding="utf-8")
+
+        etapes = """## [ ] 16_Frontend_Components : Components
+- [ ] Integrer chaque composant dans un layout logique regi par `dashboard`, `AppLayout`
+- [ ] Orchestrer `frontend/src/pages/Dashboard.tsx` avec l'ordre des sections `dashboard_widgets` -> `stats` -> `hero` -> `tables` -> `forms`
+"""
+        (root / "Constitution" / "etapes.md").write_text(etapes, encoding="utf-8")
+
+        manager = EtapeManager(model=None, project_root=str(root))
+        ok, checked, total = manager.mark_step_as_completed("16_Frontend_Components")
+
+        assert ok is True
+        assert total == 2
+        assert checked == 2
+
+
 if __name__ == "__main__":
     test_module_tokens_are_ignored_in_mapping_subtasks()
     test_zustand_module_list_tokens_are_ignored()
     test_auth_action_tokens_are_ignored_for_api_layer()
+    test_dashboard_layout_tokens_are_ignored_for_frontend_components()
     print("ok")

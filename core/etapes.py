@@ -1633,6 +1633,21 @@ class EtapeManager:
             if any(hint in subtask_low for hint in ("auth.api", "auth", "jwt", "endpoint", "api layer")):
                 return True
 
+        # Zones/sections UI (layout) mentionnees dans les checklists Frontend Components.
+        layout_tokens = {
+            "dashboard", "dashboard_widget", "dashboard_widgets",
+            "stats", "hero", "tables", "forms",
+            "topbar", "sidebar", "footer",
+            "main", "content", "main content",
+        }
+        if lowered in layout_tokens or compact in {"dashboardwidgets", "maincontent"}:
+            subtask_low = self._strip_accents(subtask_text.lower())
+            if any(
+                hint in subtask_low
+                for hint in ("layout", "dashboard", "section", "orchestrer", "shell.", "main.", "zone", "applayout")
+            ):
+                return True
+
         # Tokens module typiques des plans MongoDB/Domain Modeling.
         semantic_aliases = {
             "doctor", "doctors", "patient", "patients", "user", "users",

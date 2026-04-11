@@ -3926,9 +3926,10 @@ ReactDOM.createRoot(rootElement).render(
             elif build_tool == "vite":
                 # Pour Vite, utiliser vite preview ou build
                 try:
+                    npm_exec = npm_path or "npm"
                     res = subprocess.run(
-                        "npm_path run build",
-                        shell=True, capture_output=True, text=True,
+                        [npm_exec, "run", "build"],
+                        capture_output=True, text=True,
                         cwd=str(d), timeout=600
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
@@ -3959,9 +3960,10 @@ ReactDOM.createRoot(rootElement).render(
             elif build_tool == "next":
                 # Pour Next.js, utiliser npm run build ou next build
                 try:
+                    npm_exec = npm_path or "npm"
                     res = subprocess.run(
-                        "npm_path run build",
-                        shell=True, capture_output=True, text=True,
+                        [npm_exec, "run", "build"],
+                        capture_output=True, text=True,
                         cwd=str(d), timeout=600
                     )
                     output = (res.stdout + "\n" + res.stderr).strip()
