@@ -3082,12 +3082,11 @@ ReactDOM.createRoot(rootElement).render(
                                     
             # [SAFE] RETRY avec backoff pour l'audit lui-meme
             
-            total_tasks = state.get("total_subtasks", 1)
-            missing = state.get("missing_tasks", 0)
-            completed = max(0, total_tasks - missing)
-            
-            # Forcer un score strict base sur la checklist
-            checklist_score = int((completed / max(1, total_tasks)) * 100)
+            total_tasks = int(state.get("total_subtasks", 0) or 0)
+            missing = int(state.get("missing_tasks", 0) or 0)
+
+            # Forcer un score strict base sur la checklist (robuste meme si total_tasks=0)
+            checklist_score = self._compute_checklist_score(total_tasks, missing)
             
             # [SAFE] SAFE PLACEHOLDER REPLACEMENT : Remplacer manuellement au lieu de laisser LangChain parser les accolades
             inject_dict = {
@@ -3139,7 +3138,11 @@ ReactDOM.createRoot(rootElement).render(
             verifier_status = "APPROUVE" if "APPROUVE" in verdict else "REJETE"
             
             # Le score final est le minimum entre le score IA et le vrai score de checklist
-            llm_score = int(result.get("score_conformite", 100))
+            try:
+                llm_score = int(result.get("score_conformite", 100))
+            except (TypeError, ValueError):
+                llm_score = 100
+            llm_score = max(0, min(100, llm_score))
             final_score = min(llm_score, checklist_score)
             
             # [SAFE] HARD OVERRIDE: Si des taches manquent dans la checklist, C'EST REJETE
@@ -3218,6 +3221,10 @@ ReactDOM.createRoot(rootElement).render(
             else:
                 status = "APPROUVE"
                 feedback_msg = ""
+
+            # [SAFE] SCORE NORMALIZATION:
+            # Quand l'audit est approuve et la checklist complete, on evite les faux 95/0.
+            final_score = self._normalize_audit_score(status, final_score, checklist_score)
             
             # [STRICT] Double-check: Si TypeScript a échoué, JAMAIS d'approbation
             if typescript_status == "FAILED" and status == "APPROUVE":
@@ -3631,6 +3638,23 @@ ReactDOM.createRoot(rootElement).render(
             and str(typescript_status or "").upper() in ts_ok_values
             and not has_build_errors
         )
+
+    def _compute_checklist_score(self, total_tasks: int, missing_tasks: int) -> int:
+        """Calcule un score checklist robuste, y compris pour les checklists vides."""
+        total = max(0, int(total_tasks or 0))
+        missing = max(0, int(missing_tasks or 0))
+        if total == 0:
+            return 100 if missing == 0 else 0
+        completed = max(0, total - missing)
+        return int((completed / total) * 100)
+
+    def _normalize_audit_score(self, status: str, final_score: int, checklist_score: int) -> int:
+        """Normalise le score final pour eviter les faux scores faibles sur audit approuve."""
+        score = max(0, min(100, int(final_score)))
+        checklist = max(0, min(100, int(checklist_score)))
+        if str(status or "").upper() == "APPROUVE" and checklist == 100:
+            return 100
+        return max(score, checklist) if str(status or "").upper() == "APPROUVE" else score
 
     def _extract_required_files(self, checklist_text: str) -> List[str]:
         """Extrait les chemins de fichiers obligatoires mentionnes dans la checklist.
