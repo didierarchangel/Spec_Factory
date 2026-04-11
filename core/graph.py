@@ -3245,7 +3245,9 @@ ReactDOM.createRoot(rootElement).render(
         
         logger.info(f"? Fichiers attendus selon la checklist: {len(expected_files)}")
         
-        # 3. Extraire les fichiers reellement presents depuis file_tree
+        # 3. Extraire les fichiers reellement presents:
+        # - file_tree (rapide, mais potentiellement stale)
+        # - filesystem disque (source de verite)
         real_files = set()
         for line in file_tree.split('\n'):
             line = line.strip()
@@ -3254,13 +3256,19 @@ ReactDOM.createRoot(rootElement).render(
                 clean_path = re.sub(r'^[\s|+-]*', '', line).strip()
                 if '.' in clean_path and any(clean_path.endswith(ext) for ext in ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.md']):
                     real_files.add(self._normalize_checklist_path(clean_path))
+
+        disk_files = self._collect_real_files_from_disk()
+        real_files.update(disk_files)
         
-        logger.info(f"? Fichiers detectes dans file_tree: {len(real_files)}")
+        logger.info(f"? Fichiers detectes (file_tree + disque): {len(real_files)}")
         
         # 4. Calculer la difference (DETERMINISTE, pas LLM) avec matching robuste
         tree_list = sorted(real_files)
         missing_files = []
         for expected in sorted(expected_files):
+            expected_disk_path = self.root / expected
+            if expected_disk_path.exists():
+                continue
             if not self._file_exists_in_tree(expected, tree_list):
                 missing_files.append(expected)
 
@@ -3489,6 +3497,44 @@ ReactDOM.createRoot(rootElement).render(
 
         return path
 
+    def _artifact_equivalence_key(self, raw_path: str) -> str:
+        """Construit une cle d'equivalence pour matcher les variantes de nommage.
+
+        Objectif: eviter les faux manquants sur des aliases checklist
+        (ex: billing vs billings, chat vs chat_messages/chatmessages).
+        """
+        path = self._normalize_checklist_path(raw_path).lower()
+        if not path:
+            return path
+
+        # Unifier quelques variantes backend connues.
+        path = path.replace("billings.routes.", "billing.routes.")
+        path = path.replace("billings.controller.", "billing.controller.")
+        path = path.replace("chat_messages.routes.", "chat.routes.")
+        path = path.replace("chat_messages.controller.", "chat.controller.")
+        path = path.replace("chatmessages.routes.", "chat.routes.")
+        path = path.replace("chatmessages.controller.", "chat.controller.")
+        path = path.replace("chat_message.routes.", "chat.routes.")
+        path = path.replace("chat_message.controller.", "chat.controller.")
+
+        return path
+
+    def _collect_real_files_from_disk(self) -> set[str]:
+        """Lit l'etat reel du filesystem (source de verite) pour TaskEnforcer."""
+        import os
+
+        real_files: set[str] = set()
+        ignore_dirs = {"node_modules", "dist", ".git", "__pycache__", ".venv"}
+        allowed_ext = (".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml", ".md")
+
+        for root, dirs, files in os.walk(str(self.root)):
+            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            for file in files:
+                rel_path = os.path.relpath(os.path.join(root, file), str(self.root)).replace("\\", "/")
+                if rel_path.endswith(allowed_ext):
+                    real_files.add(self._normalize_checklist_path(rel_path))
+        return real_files
+
     def _is_no_alert_text(self, value: Any) -> bool:
         """Detecte si un texte d'alerte signifie 'aucune erreur'."""
         txt = str(value or "").strip().lower()
@@ -3634,6 +3680,9 @@ ReactDOM.createRoot(rootElement).render(
                 line
             )
             for f in list_matches:
+                # Eviter les doublons basename quand un chemin complet existe deja.
+                if any(existing.endswith("/" + f) for existing in seen_full_paths):
+                    continue
                 if f not in seen_full_paths:
                     required_files.append(f)
                     seen_full_paths.add(f)
@@ -3775,21 +3824,29 @@ ReactDOM.createRoot(rootElement).render(
         """
         file_to_find_normalized = file_to_find.replace('\\', '/')
         file_name_only = file_to_find.split('/')[-1] if '/' in file_to_find else file_to_find
+        expected_key = self._artifact_equivalence_key(file_to_find_normalized)
         
         for tree_file in file_tree_list:
             tree_file_normalized = tree_file.strip().replace('\\', '/')
+            tree_key = self._artifact_equivalence_key(tree_file_normalized)
             
             # Niveau 1 : correspondance exacte
             if tree_file_normalized == file_to_find_normalized:
+                return True
+            if tree_key and tree_key == expected_key:
                 return True
             
             # Niveau 2 : endswith (pour chemins partiels)
             if tree_file_normalized.endswith(file_to_find_normalized):
                 return True
+            if expected_key and tree_key.endswith(expected_key):
+                return True
             
             # Niveau 3 : corresponds au nom du fichier seul
             tree_file_name = tree_file_normalized.split('/')[-1]
             if tree_file_name == file_name_only:
+                return True
+            if self._artifact_equivalence_key(tree_file_name) == self._artifact_equivalence_key(file_name_only):
                 return True
         
         return False

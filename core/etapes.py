@@ -25,6 +25,16 @@ def is_real_file(path: str):
         ".env", ".yaml", ".yml",
         ".sh", ".css", ".html"
     ))
+
+
+def _looks_like_json_key_path(token: str) -> bool:
+    """Detecte une notation de chemin de cle JSON (ex: DOMAIN_ADAPTATION.modules)."""
+    if not token or "/" in token or "\\" in token or " " in token:
+        return False
+    # Eviter les vrais fichiers avec extension connue
+    if is_real_file(token):
+        return False
+    return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+", token))
     
 STARTUP_INSTRUCTIONS = """
 ---
@@ -1560,18 +1570,74 @@ class EtapeManager:
         # Trouver le dossier parent attendu et vérifier son contenu
         target = Path(clean_path)
         target_normalized = normalize_name(target.name)
-        
+
         # Chercher dans les dossiers candidats
         candidate_dirs = [check_root / target.parent]
         for prefix in prefixes:
             candidate_dirs.append(check_root / prefix / target.parent)
-        
+
+        # Cas fréquent: nom de fichier seul dans une sous-tâche (ex: Doctor.model.ts).
+        # On cherche aussi dans les dossiers métier standards.
+        if target.parent.as_posix() in (".", ""):
+            common_dirs = [
+                "backend/src/models",
+                "backend/src/routes",
+                "backend/src/controllers",
+                "backend/src/services",
+                "backend/src/middlewares",
+                "frontend/src/components",
+                "frontend/src/services",
+                "frontend/src/views",
+                "frontend/src/hooks",
+                "src/models",
+                "models",
+            ]
+            for rel_dir in common_dirs:
+                candidate_dirs.append(check_root / rel_dir)
+
         for candidate_dir in candidate_dirs:
             if candidate_dir.exists() and candidate_dir.is_dir():
                 for existing_file in candidate_dir.iterdir():
                     if normalize_name(existing_file.name) == target_normalized:
                         return True
-        
+
+        return False
+
+    def _is_semantic_module_token(self, token: str, subtask_text: str) -> bool:
+        """Ignore les labels métier (doctor, chat_message, etc.) non destinés à être des fichiers/deps."""
+        if not token:
+            return False
+        if "/" in token or "\\" in token or " " in token:
+            return False
+        if is_real_file(token):
+            return False
+        if token.startswith("-"):
+            return False
+        if token.lower() in {"dev", "build", "start", "test"}:
+            return False
+
+        lowered = token.lower()
+        if lowered.startswith("module_"):
+            return True
+        # Tokens module typiques des plans MongoDB/Domain Modeling.
+        semantic_aliases = {
+            "doctor", "doctors", "patient", "patients", "user", "users",
+            "medication", "medications", "chat", "chat_message", "chatmessage",
+            "archive", "archives", "consultation", "consultations",
+            "prescription", "prescriptions", "billing", "alert", "alerts",
+        }
+        if lowered in semantic_aliases:
+            return True
+
+        # Heuristique contexte: sous-tâche de modèle métier.
+        subtask_low = self._strip_accents(subtask_text.lower())
+        is_modeling_context = any(
+            hint in subtask_low
+            for hint in ("module metier", "entite metier", "modelisation", "parcours critique")
+        )
+        if is_modeling_context and bool(re.fullmatch(r"[a-z_][a-z0-9_]{2,}", lowered)):
+            return True
+
         return False
 
     def _dependency_installed(self, check_root: Path, dep_name: str) -> bool:
@@ -1704,7 +1770,15 @@ class EtapeManager:
                                 all_ok = False
                                 missing_items.append(item)
                                 continue
-                        
+
+                        # Skip les chemins de clés JSON (ex: DOMAIN_ADAPTATION.modules)
+                        if _looks_like_json_key_path(item):
+                            continue
+
+                        # Skip les labels métier non-fichiers (ex: doctor, chat_message)
+                        if self._is_semantic_module_token(item, subtask_text):
+                            continue
+                         
                         # Skip les clés JSON de package.json (dependencies, devDependencies, etc.)
                         # Ces keywords ne sont jamais des fichiers ou dépendances à chercher
                         json_config_keywords = {
